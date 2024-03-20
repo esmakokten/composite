@@ -1,4 +1,4 @@
-#include <fpds.h>
+#include <fpss.h>
 
 #define SLM_FPRR_NPRIOS         32
 #define SLM_FPRR_PRIO_HIGHEST   TCAP_PRIO_MAX
@@ -14,9 +14,10 @@ struct prioqueue {
 struct prioqueue run_queue[NUM_CPU];
 
 struct timer_global {
-	struct heap    h; // you need to extend the heap , ring buffer in the thread
+	struct heap    h;
 	void           *data[MAX_NUM_THREADS];
 	cycles_t       current_timeout;
+	thdid_t		   previous_tid;
 } CACHE_ALIGNED;
 static struct timer_global __timer_globals[NUM_CPU];
 
@@ -27,7 +28,7 @@ timer_global(void) {
 
 /* The timer expired */
 void
-slm_timer_fpds_expire(cycles_t now)
+slm_timer_fpss_expire(cycles_t now)
 {
 	struct timer_global *g = timer_global();
 	g->current_timeout = now;
@@ -60,20 +61,39 @@ slm_timer_fpds_expire(cycles_t now)
 			{
 				/* A thread, in its new period with no budget, wants to replenish */
 
-				COS_TRACE("replenish(): TID: %ld Now: %llu\n", th->tid, now, 0);
 				replenish(th, now);
+				/* Add to the runqueue back if it has budget > 0 */
+				if (tt->budget > 0)
+				{
+					/* Update the state */
+					st->state = STATE_READY;
+					ps_list_head_append_d(&run_queue[cos_cpuid()].prio[tp->priority], st);
+				}
 
 				/* Thread can only be in expended state if it is budgeted */
 				assert(tt->is_budgeted);
+				assert(tt->timeout_idx == -1);
+				if(st->repl_count > 0) {
+					slm_timer_fpss_add(th, st->replenishments[st->repl_head_idx].replenish_time_abs);
+				}
 
 				break;
 			}
 			case STATE_READY:
 			{
 				/* A thread, waiting for the execution in ready state */
+				/* There could be some threads not yet switch to STATE RUNNIG but timer fires for another replenishment */
+				
+				// Optimization: Since it is already in the runqueue and wait for the execution, 
+				// We can wait for the scheduling and replenish just before it is scheduled
 
-				// There should not be any timer for the threads in ready state
-				assert(0);
+				assert(tt->is_budgeted);
+				replenish(th, now);
+
+				assert(tt->timeout_idx == -1);
+				if(st->repl_count > 0) {
+					slm_timer_fpss_add(th, st->replenishments[st->repl_head_idx].replenish_time_abs);
+				}	
 
 				break;
 			}
@@ -87,7 +107,7 @@ slm_timer_fpds_expire(cycles_t now)
 			{
 				/* A thread, blocked in the previous period wants to wake up in its next period */
 				/* TODO: Not throughly tested or used, remove this comment after verification */
-				slm_sched_fpds_wakeup_periodic(th, now);
+				slm_sched_fpss_wakeup_periodic(th, now);
 				break;
 			}
 			case STATE_RUNNING:
@@ -97,8 +117,14 @@ slm_timer_fpds_expire(cycles_t now)
 				// Optimization: For the budgeted threads that still have budget(in the runqueue), 
 				// We can replenish just before it is scheduled
 
-				// replenish(th, now);
+				assert(tt->is_budgeted);
+				replenish(th, now);
 
+				/* Add the next replenishment timer */
+				assert(tt->timeout_idx == -1);
+				if(st->repl_count > 0)
+					slm_timer_fpss_add(th, st->replenishments[st->repl_head_idx].replenish_time_abs);
+				
 				break;
 			}
 			default:
@@ -115,7 +141,7 @@ slm_timer_fpds_expire(cycles_t now)
  */
 
 int
-slm_timer_fpds_add(struct slm_thd *t, cycles_t absolute_timeout) 
+slm_timer_fpss_add(struct slm_thd *t, cycles_t absolute_timeout) 
 {
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
 	struct timer_global *g = timer_global();
@@ -125,12 +151,14 @@ slm_timer_fpds_add(struct slm_thd *t, cycles_t absolute_timeout)
 
 	tt->abs_next_processing = absolute_timeout;
 	heap_add(&g->h, t);
+
+	//COS_TRACE("\"event\":\"add-timer\", \"tid\":%ld, \"time\":%llu", t->tid, tt->abs_next_processing, 0);
  
 	return 0;
 }
 
 int
-slm_timer_fpds_cancel(struct slm_thd *t)
+slm_timer_fpss_cancel(struct slm_thd *t)
 {
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
 	struct timer_global *g   = timer_global();
@@ -147,7 +175,7 @@ slm_timer_fpds_cancel(struct slm_thd *t)
 }
 
 int
-slm_timer_fpds_thd_init(struct slm_thd *t)
+slm_timer_fpss_thd_init(struct slm_thd *t)
 {
 	struct timer_global *g = timer_global();
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
@@ -163,7 +191,7 @@ slm_timer_fpds_thd_init(struct slm_thd *t)
 		.period      = SLM_WINDOW_HIGHEST,
 	};
 
-	COS_TRACE("slm_timer_fpds_thd_init(): TID: %ld Period Start: %llu, %d\n", t->tid, tt->abs_period_start, 0);
+	COS_TRACE("\"event\":\"init\", \"tid\":%ld, \"period\":%llu, \"period-start\":%llu", t->tid, tt->period, tt->abs_period_start);
 	// TODO: Check if the thread has higher priority than the current thread?
 	// Add timer interrupt if necessary?
 
@@ -171,10 +199,10 @@ slm_timer_fpds_thd_init(struct slm_thd *t)
 }
 
 void
-slm_timer_fpds_thd_deinit(struct slm_thd *t)
+slm_timer_fpss_thd_deinit(struct slm_thd *t)
 {
 	// Cancel the timers
-	slm_timer_fpds_cancel(t);
+	slm_timer_fpss_cancel(t);
 	return;
 }
 
@@ -200,11 +228,12 @@ slm_policy_timer_init(microsec_t period)
 
 	next_timeout = slm_now();
 	g->current_timeout = next_timeout;
+	g->previous_tid = 0;
 	slm_timeout_set(next_timeout);
 }
 
 int
-slm_timer_fpds_init(void)
+slm_timer_fpss_init(void)
 {
 	/* 10ms */
 	slm_policy_timer_init(10000);
@@ -213,10 +242,13 @@ slm_timer_fpds_init(void)
 }
 
 void
-slm_sched_fpds_execution(struct slm_thd *t, cycles_t cycles, cycles_t now)
+slm_sched_fpss_execution(struct slm_thd *t, cycles_t cycles, cycles_t now)
 {
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
+	struct timer_global *g = timer_global();
+
+	assert(st->state != STATE_EXPENDED);
 
 	if(tt->is_budgeted == 0) {
 		return;
@@ -225,17 +257,67 @@ slm_sched_fpds_execution(struct slm_thd *t, cycles_t cycles, cycles_t now)
 	tt->budget -= cycles;
 
 	// Are period_start and period_end correct?
-	assert(tt->abs_period_start <= now);
+	// assert(tt->abs_period_start <= now);
+
+	// TODO: Decide where is correct
+	// If needed sync abs_period_end and abs_period_start
+	if (tt->abs_period_end < now) {
+
+		tt->abs_period_start += tt->period;
+		tt->abs_period_end = tt->abs_period_start + tt->period;
+	}
+
 	// Did we miss the deadline? 
 	// assert(tt->abs_period_end >= now + remaining WCET);
 	
-	// Plan the next replenishment
-	// TODO: Temporary for deferrable server
+	// TODO: Check budget overruns ex. sporadic server paper
+	cycles_t replenish_time = now + tt->period - cycles;
+	g->previous_tid = t->tid;
+
+	int repl_next_idx = (st->repl_tail_idx + 1) == SLM_FPRES_REPL_WINDOW_SIZE ? 0 : st->repl_tail_idx + 1;
+	int repl_prev_idx = (st->repl_head_idx - 1) == -1 ? SLM_FPRES_REPL_WINDOW_SIZE - 1 : st->repl_head_idx - 1;
+	// Check if the replenishment window is full
+	if (st->repl_count == SLM_FPRES_REPL_WINDOW_SIZE) { 
+		// COS_TRACE("\"event\":\"repl-full\", \"tid\":%ld, \"repl-count\":%d", t->tid, st->repl_count, 0);
+		// Merge the last replenishment with the new replenishment
+		st->replenishments[repl_prev_idx].replenish_amount += cycles;
+		st->replenishments[repl_prev_idx].replenish_time_abs = replenish_time;
+	}
+	else {
+		// Add a new replenishment
+		st->replenishments[st->repl_tail_idx].replenish_amount += cycles;
+		st->replenishments[st->repl_tail_idx].replenish_time_abs = replenish_time;
+		st->repl_tail_idx = repl_next_idx;
+		st->repl_count++;
+	}
+
+	//Print all replenishments
+	/*
+	int idx = st->repl_head_idx;
+	for (int i = 0; i < st->repl_count; i++) {
+		COS_TRACE("-Replenisment: TID: %ld, Replenish Time: %llu, Replenish Amount: %llu\n", t->tid, st->replenishments[idx].replenish_time_abs, st->replenishments[idx].replenish_amount);
+		idx = (idx + 1) == SLM_FPRES_REPL_WINDOW_SIZE ? 0 : idx + 1;
+	}
+	*/
+	//COS_TRACE("Replenisment: TID: %ld, Replenish Time: %llu, Replenish Amount: %llu\n", t->tid, replenish_time, cycles);
+
+	if (st->state == STATE_BLOCKED || st->state == STATE_BLOCKED_PERIODIC) {
+		// Skip adding the timer for blocked threads	
+		// COS_TRACE("\"event\":\"#ASSERT#\", \"tid\":%ld, \"state\":%d", t->tid, st->state, 0);
+		// assert(0);
+		return;
+	}
 
 	// if budget is 0, add timer and block	
 	if (tt->budget <= 0) {
-		//COS_TRACE("expended(): TID: %ld Now: %llu\n", t->tid, now, 0);
 		expended(t);
+	}
+
+	// Add the earliest replenishment timer if not already added
+	if (tt->timeout_idx == -1) {
+		// There should be a timer for blocked threads
+		assert(st->state != STATE_BLOCKED || st->state != STATE_BLOCKED_PERIODIC);
+		slm_timer_fpss_add(t, st->replenishments[st->repl_head_idx].replenish_time_abs);
 	}
 
 	return; 
@@ -261,18 +343,24 @@ set_next_timer_interrupt(struct slm_thd *t, cycles_t now)
 
 		next_timeout = tt->abs_next_processing;
 		
+	} else {
+		/* No thread in the timer queue */
+		next_timeout = 0;
+
 	}
+	
 	
 	/* Check if the next timeout is further than the budget of the current thread */
 	if(t != NULL) { 
 		struct slm_timer_thd *curr = slm_thd_timer_policy(t);
 		if (curr->is_budgeted) {
 			assert(curr->budget >= 0);
-			//Check if the budget exceeds the abs_period_end
-			//If it does, set the curr_deadline to abs_period_end
-			cycles_t curr_deadline = (cycles_t)curr->budget > curr->abs_period_end ? curr->abs_period_end : (cycles_t)curr->budget;
-			//Take the minimum of the next_timeout and curr_deadline
-			next_timeout = (next_timeout > (curr_deadline + now)) ? (curr_deadline + now) : next_timeout;
+			// TODO: a WCET check can be done here
+			// Check if the WCET exceeds the abs_period_end
+			// assert(curr->WCET <= (curr->abs_period_end - now));
+
+			// Take the minimum of the next_timeout and curr_deadline
+			next_timeout = (next_timeout > ((cycles_t)curr->budget + now)) ? ((cycles_t)curr->budget + now) : next_timeout;
 		}
 	}
 	
@@ -288,7 +376,7 @@ set_next_timer_interrupt(struct slm_thd *t, cycles_t now)
 }
 
 struct slm_thd *
-slm_sched_fpds_schedule(cycles_t now)
+slm_sched_fpss_schedule(cycles_t now)
 {
 	int i;
 	struct slm_sched_thd *st;
@@ -306,30 +394,52 @@ slm_sched_fpds_schedule(cycles_t now)
 		 * Otherwise it won't be truly round robin 
 		 */
 
-		/* Threads with no budget should not be in the runqueue */
-		assert(st->state != STATE_EXPENDED);
+		/* Threads with no budget should not be in the runqueue */	
+		// TODO: I saw this assert happening, need to investigate	
+		// assert(st->state != STATE_EXPENDED);
+		if ((tt->is_budgeted) && (tt->budget <= 0)) {
+			COS_TRACE("\"event\":\"#ASSERT#\", \"tid\":%ld, \"budget\":%lld", slm_thd_from_sched(st)->tid, tt->budget, 0);
+			continue;
+		}	
 		assert(!tt->is_budgeted || tt->budget > 0);
 
 		ps_list_rem_d(st);
-		ps_list_head_append_d(&prios[i], st);
+		ps_list_head_append_d(&prios[i], st);		
+		
+		// TODO: Workaround
+		// Check if the thread same as the previous one
+		if (st->repl_count > 0 && (st->repl_count != SLM_FPRES_REPL_WINDOW_SIZE) && (g->previous_tid == slm_thd_from_sched(st)->tid)) {
+			// Remove the last replenishment from the replenishment window next will be added after next execution
+			//COS_TRACE("\"event\":\"#ASSERT#\", \"tid\":%ld, \"repl-count\":%d", slm_thd_from_sched(st)->tid, st->repl_count, 0);
+			st->repl_tail_idx = (st->repl_tail_idx - 1) == -1 ? SLM_FPRES_REPL_WINDOW_SIZE - 1 : st->repl_tail_idx - 1;
+			// Cancel the timer if it is added
+			if (tt->timeout_idx != -1 && (tt->abs_next_processing == st->replenishments[st->repl_tail_idx].replenish_time_abs)) {
+
+				//COS_TRACE("\"event\":\"#ASSERT#\", \"tid\":%ld, \"timeout-idx\":%d, \"abs_next_processing\": %llu", slm_thd_from_sched(st)->tid, tt->timeout_idx, tt->abs_next_processing);
+				assert(st->repl_count == 1);
+				slm_timer_fpss_cancel(slm_thd_from_sched(st));
+			}
+			st->repl_count--;
+		}
 
 		/* Set the timer */
 		set_next_timer_interrupt(slm_thd_from_sched(st), now);
 
 		st->state = STATE_RUNNING;	
-		//COS_TRACE("slm_sched_fpds_schedule(): TID: %ld Next Timeout: %llu\n", slm_thd_from_sched(st)->tid, g->current_timeout, 0);
+		//COS_TRACE("\"event\":\"schedule\", \"tid\":%ld, \"next-timeout\":%llu", slm_thd_from_sched(st)->tid, g->current_timeout, 0);
+
 
 		return slm_thd_from_sched(st);
 	}
 
 	set_next_timer_interrupt(NULL, now);
-	//COS_TRACE("slm_sched_fpds_schedule(): IDLE Next Timeout: %llu\n", g->current_timeout, 0,0);
+	//COS_TRACE("\"event\":\"schedule\", \"tid\":0, \"next-timeout\":%llu", g->current_timeout, 0, 0);
 
 	return NULL;
 }
 
 int
-slm_sched_fpds_block(struct slm_thd *t)
+slm_sched_fpss_block(struct slm_thd *t)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
@@ -337,12 +447,13 @@ slm_sched_fpds_block(struct slm_thd *t)
 	assert(st->state != STATE_BLOCKED);
 	assert(st->state != STATE_BLOCKED_PERIODIC);
 
-	//COS_TRACE("slm_sched_fpds_block(): TID: %ld State: %d\n", t->tid, st->state, 0);
+	COS_TRACE("\"event\":\"block\", \"tid\":%ld, \"wake-time\":%llu", t->tid, tt->abs_next_processing, 0);
 
 	/* Remove from runqueue */
 	ps_list_rem_d(st);
 	st->state = STATE_BLOCKED;
 
+	/* Cancel the timer */
 	// TODO: Now cancelling the timer is in sched/main.c should we move it here?
 
 	return 0;
@@ -350,7 +461,7 @@ slm_sched_fpds_block(struct slm_thd *t)
 
 /* TODO: Not throughly tested or used, remove this comment after verification */
 int
-slm_sched_fpds_block_periodic(struct slm_thd *t)
+slm_sched_fpss_block_periodic(struct slm_thd *t)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
@@ -392,12 +503,7 @@ expended(struct slm_thd *t)
 	tt->abs_period_start = tt->abs_period_start + tt->period;
 	tt->abs_period_end = tt->abs_period_start + tt->period;
 
-	COS_TRACE("expended(): TID: %ld Period Start, End: %llu, %llu\n", t->tid, tt->abs_period_start, tt->abs_period_end);
-
-	// Add replenishment timer
-	ret = slm_timer_fpds_add(t, tt->abs_period_start);
-
-	assert(ret == 0);
+	//COS_TRACE("expended(): TID: %ld Period Start, End: %llu, %llu\n", t->tid, tt->abs_period_start, tt->abs_period_end);
 }
 
 static void
@@ -407,19 +513,26 @@ replenish(struct slm_thd *t, cycles_t now)
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
 	int ret = -1;
 
-	tt->budget = tt->initial_budget;
+	//TODO: Any check here?
 
-	assert(st->state == STATE_EXPENDED);
-	st->state = STATE_READY;
-
-	COS_TRACE("replenish(): TID: %ld, +%llu\n", t->tid, tt->initial_budget, 0);
-
-	/* Add to the runqueue */
-	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[t->priority], st);
+	// Do the replenishments until the current time
+	int elem_count = st->repl_count;
+	for(int i = 0; i < elem_count; i++) {
+		if (now >= st->replenishments[st->repl_head_idx].replenish_time_abs) {
+			tt->budget += st->replenishments[st->repl_head_idx].replenish_amount;
+			COS_TRACE("\"event\":\"replenish\", \"tid\":%ld, \"amount\":%llu", t->tid, st->replenishments[st->repl_head_idx].replenish_amount, 0);
+			st->replenishments[st->repl_head_idx].replenish_amount = 0;
+			st->repl_head_idx = (st->repl_head_idx + 1) == SLM_FPRES_REPL_WINDOW_SIZE ? 0 : st->repl_head_idx + 1;
+			st->repl_count--;
+		}
+		else {
+			break;
+		}
+	}
 }
 
 int
-slm_sched_fpds_wakeup(struct slm_thd *t)
+slm_sched_fpss_wakeup(struct slm_thd *t)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
@@ -429,31 +542,40 @@ slm_sched_fpds_wakeup(struct slm_thd *t)
 	assert(st->state == STATE_BLOCKED);
 	
 	if (tt->is_budgeted) {
-		/* Shift abs_period_start, abs_period_end and abs_next_processing */
+		/* Shift abs_period_start, abs_period_end */
 		/* This prevents a thread from gaining advantage over other same priority */
-		cycles_t offset_abs_next_processing = tt->abs_next_processing - tt->abs_period_start;
-		 
+
 		int periods_passed = (g->current_timeout - tt->abs_period_start) / tt->period;
-		COS_TRACE("wakeup(): TID: %ld Periods Passed: %d\n", t->tid, periods_passed, 0);
-		tt->abs_period_start += (periods_passed * tt->period);
-		tt->abs_period_end = tt->abs_period_start + tt->period;
+		
+		if (periods_passed > 0) {
+			
+			tt->abs_period_start += (periods_passed * tt->period);
+			tt->abs_period_end = tt->abs_period_start + tt->period;
 
-		/* TODO: Update replenisment window abs values */
-		/* Add the cancelled timer in slm_sched_fpds_block() */
-		// Recover last state
-		// tt->abs_next_processing = tt->abs_period_start + offset_abs_next_processing;
+			/* Shift the replenishment window */
+			int idx = st->repl_head_idx;
+			for (int i = 0; i < st->repl_count; i++) {
+				st->replenishments[idx].replenish_time_abs += (periods_passed * tt->period);
+				idx = (idx + 1) == SLM_FPRES_REPL_WINDOW_SIZE ? 0 : idx + 1;
+			}
+		}
 
-		// TODO: For only deferable server 
-		// If there is no budget change state and add timer
+		//COS_TRACE("\"event\":\"wakeup\", \"tid\":%ld, \"period-start\":%llu, \"period-end\":%llu", t->tid, tt->abs_period_start, tt->abs_period_end);
+
+		/* Add the cancelled timer in slm_sched_fpss_block() */
+		assert(tt->timeout_idx == -1);
+		slm_timer_fpss_add(t, st->replenishments[st->repl_head_idx].replenish_time_abs);
+
+		// If there is no budget change state and return
 		if (tt->budget <= 0) {
-			slm_timer_fpds_add(t, tt->abs_period_end);
 			st->state = STATE_EXPENDED;
 			return 0;
 		}
 	}
+
 	/* Add to the runqueue */
 	st->state = STATE_READY;
-	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[t->priority - 1], st);
+	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[t->priority], st);
 
 	return 0;
 }
@@ -461,7 +583,7 @@ slm_sched_fpds_wakeup(struct slm_thd *t)
 
 /* TODO: Not throughly tested or used, remove this comment after verification */
 int
-slm_sched_fpds_wakeup_periodic(struct slm_thd *t, cycles_t now)
+slm_sched_fpss_wakeup_periodic(struct slm_thd *t, cycles_t now)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
@@ -474,31 +596,35 @@ slm_sched_fpds_wakeup_periodic(struct slm_thd *t, cycles_t now)
 
 	/* Add to the runqueue */
 	st->state = STATE_READY;
-	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[t->priority - 1], st);
+	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[t->priority], st);
 
 	return 0;
 }
 
 void
-slm_sched_fpds_yield(struct slm_thd *t, struct slm_thd *yield_to)
+slm_sched_fpss_yield(struct slm_thd *t, struct slm_thd *yield_to)
 {
-
 	// TODO: Not implemented yet
-	assert(0);
-
-	struct slm_sched_thd *st = slm_thd_sched_policy(t);
-
-	ps_list_rem_d(st);
-	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[t->priority], slm_thd_sched_policy(yield_to));
+	
+	// Do nothing for the same priority threads it will 
+	// COS_TRACE("\"event\":\"yield\", \"tid\":%ld, \"yield-to\":%ld", t->tid, yield_to->tid, 0);
 }
 
 int
-slm_sched_fpds_thd_init(struct slm_thd *t)
+slm_sched_fpss_thd_init(struct slm_thd *t)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 
 	t->priority = SLM_FPRR_PRIO_LOWEST;
 	st->state = STATE_READY;
+
+	// Initialize the replenishment window 
+	st->repl_head_idx = 0;
+	st->repl_tail_idx = 0;
+	for (int i = 0; i < SLM_FPRES_REPL_WINDOW_SIZE; i++) {
+	 	st->replenishments[i].replenish_time_abs = 0;
+	 	st->replenishments[i].replenish_amount = 0;
+	}
 
 	ps_list_init_d(st);
 
@@ -506,7 +632,7 @@ slm_sched_fpds_thd_init(struct slm_thd *t)
 }
 
 void
-slm_sched_fpds_thd_deinit(struct slm_thd *t)
+slm_sched_fpss_thd_deinit(struct slm_thd *t)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 
@@ -520,9 +646,11 @@ update_queue(struct slm_thd *t, tcap_prio_t prio)
 {
 	struct slm_sched_thd *st = slm_thd_sched_policy(t);
 
-	t->priority = prio;
+	t->priority = prio - 1;
 	ps_list_rem_d(st); /* if we're already on a list, and we're updating priority */
 	ps_list_head_append_d(&run_queue[cos_cpuid()].prio[prio], st);
+
+	COS_TRACE("\"event\":\"update-priority\", \"tid\":%ld, \"priority\":%d", t->tid, t->priority, 0);
 
 	return;
 }
@@ -533,10 +661,13 @@ update_period(struct slm_thd *t, cycles_t period)
 	struct slm_timer_thd *tt = slm_thd_timer_policy(t);
 
 	tt->period = period;
+
+	/* TODO: Align the period start for the threads has the same period */
+	// tt->abs_period_start = slm_now();
+	// tt->abs_period_start = tt->abs_period_start - (tt->abs_period_start % period);
 	tt->abs_period_end = tt->abs_period_start + period;
 
-	COS_TRACE("update_period(): TID: %lu Period: %llu\n", t->tid, tt->period, 0);
-
+	COS_TRACE("\"event\":\"update-period\", \"tid\":%ld, \"period\":%llu", t->tid, tt->period, 0);
 	return;
 }
 
@@ -549,13 +680,13 @@ update_budget(struct slm_thd *t, cycles_t budget)
 	tt->initial_budget = budget;
 	tt->is_budgeted = 1;
 
-	COS_TRACE("update_budget(): TID: %lu Budget: %llu\n", t->tid, tt->budget, 0);
+	COS_TRACE("\"event\":\"update-budget\", \"tid\":%ld, \"budget\":%llu", t->tid, tt->budget, 0);
 
 	return;
 }
 
 int
-slm_sched_fpds_thd_update(struct slm_thd *t, sched_param_type_t type, unsigned int v)
+slm_sched_fpss_thd_update(struct slm_thd *t, sched_param_type_t type, unsigned int v)
 {
 
 	switch (type) {
@@ -597,7 +728,7 @@ slm_sched_fpds_thd_update(struct slm_thd *t, sched_param_type_t type, unsigned i
 }
 
 void
-slm_sched_fpds_init(void)
+slm_sched_fpss_init(void)
 {
 	int i;
 

@@ -612,7 +612,7 @@ pending_events:
 // TODO: Added for tracing, remove
 void slm_idle_iteration(void) 
 {
-	cos_trace_print_buffer();
+	//cos_trace_print_buffer();
 }
 
 void

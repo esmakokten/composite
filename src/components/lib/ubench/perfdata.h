@@ -243,8 +243,10 @@ perfdata_all(struct perfdata *pd)
 	printc(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n");
 
 	printc("#Latency\n");
-	for (i = 0 ; i < pd->sz ; i++) printc("V: %llu\n", pd->values[i]);
-
+	for (i = 0 ; i < pd->sz ; i++) {
+		printc("V: %llu, ", pd->values[i]);
+		if (i % 10 == 0) printc("\n");
+	}
 	printc("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n\n");
 }
 

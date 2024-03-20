@@ -4,7 +4,6 @@
 #include <cos_component.h>
 #include <ps.h>
 #include <slm_api.h>
-#include <cos_trace.h>
 
 typedef unsigned long slm_cs_cached_t;
 /* Critical section (cs) API to protect scheduler data-structures */
@@ -191,7 +190,7 @@ try_again:
 	g->scheduled_thd->switch_cnt++;
 	g->scheduled_thd->total_exec_time += execution_time;
 	
-	COS_TRACE("<< [TID, Amount of execution] [\"%ld\", %llu],\n", g->scheduled_thd->tid, execution_time, now);
+	COS_TRACE("\"event\":\"execution\", \"tid\":%ld, \"amount\":%llu, \"now\":%llu", g->scheduled_thd->tid, execution_time, now);
 
 	if(!(g->scheduled_thd->properties & SLM_THD_PROPERTY_SPECIAL)) {		
 		slm_sched_execution(g->scheduled_thd, execution_time, now);

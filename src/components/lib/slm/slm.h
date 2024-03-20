@@ -5,6 +5,7 @@
 #include <cos_defkernel_api.h>
 #include <ps.h>
 #include <ck_ring.h>
+#include <cos_trace.h>
 
 /*
  * Simple state machine for each thread

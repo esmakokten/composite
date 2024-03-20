@@ -17,7 +17,8 @@ constructor = "booter"
 
 [[components]]
 name = "sched"
-img  = "sched.root_fprr"
+img  = "sched.sporadic_server"
+#img  = "sched.sporadic_server_priority_aware"
 deps = [{srv = "capmgr", interface = "init"}, {srv = "capmgr", interface = "capmgr"}, {srv = "capmgr", interface = "memmgr"}]
 implements = [{interface = "sched"}, {interface = "init"}]
 constructor = "booter"

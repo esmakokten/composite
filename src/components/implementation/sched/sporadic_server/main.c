@@ -17,10 +17,9 @@
 //#include <quantum.h>
 //#include <fprr.h>
 //#include <fpres.h>
-#include <fpds.h>
+#include <fpss.h>
 #include <slm_blkpt.c>
 #include <slm_modules.h>
-
 #include <syncipc.h>
 
 struct slm_resources_thd {
@@ -33,7 +32,7 @@ struct slm_thd *slm_thd_static_cm_lookup(thdid_t id);
 
 SLM_MODULES_COMPOSE_DATA();
 //SLM_MODULES_COMPOSE_FNS(quantum, fprr, static_cm);
-SLM_MODULES_COMPOSE_FNS(fpds, fpds, static_cm);
+SLM_MODULES_COMPOSE_FNS(fpss, fpss, static_cm);
 
 struct crt_comp self;
 
@@ -170,8 +169,14 @@ thd_block(void)
 	int ret;
 
 	slm_cs_enter(current, SLM_CS_NONE);
-        ret = slm_thd_block(current);
-	if (!ret) ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
+
+	/* TODO: Cancel the timers for the current thread (replenishments and activations) */
+	slm_timer_cancel(current);	
+    ret = slm_thd_block(current);
+	assert(ret == 0);
+	if (!ret) {
+		ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
+	}
 	else      slm_cs_exit(NULL, SLM_CS_NONE);
 
 	return ret;
@@ -181,10 +186,10 @@ thd_block(void)
 int
 sched_thd_block(thdid_t dep_id)
 {
+	printc("sched_thd_block tid: %lu time: %llu\n", cos_thdid(), slm_now());
 	if (dep_id) {
 		assert(0);
-	}
-
+	}	
 	return thd_block();
 }
 
@@ -229,16 +234,23 @@ thd_block_until(cycles_t timeout)
 
 	while (cycles_greater_than(timeout, slm_now())) {
 		slm_cs_enter(current, SLM_CS_NONE);
-		/* Cancel the timers for the current thread (replenishments and activations) */
+		/* TODO: Cancel the timers for the current thread (replenishments and activations) */
 		slm_timer_cancel(current);
-		if (slm_timer_add(current, timeout)) goto done;
+		if (slm_timer_add(current, timeout)) 
+		{	assert(0);
+
+			goto done;
+		}
 		if (slm_thd_block(current)) {
+			assert(0);
 			slm_timer_cancel(current);
 		}
 done:
 		ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
 		/* cleanup stale timeouts (e.g. if we were woken outside of the timer) */
-		slm_timer_cancel(current);
+		// TODO: BUG
+		assert(ret == 0);
+		// slm_timer_cancel(current);
 	}
 
 	return ret;

@@ -1,0 +1,60 @@
+[system]
+description = "Simplest system with both capability manager and scheduler, from unit_schedcomp.sh"
+
+[[components]]
+name = "booter"
+img  = "no_interface.llbooter"
+implements = [{interface = "init"}, {interface = "addr"}]
+deps = [{srv = "kernel", interface = "init", variant = "kernel"}]
+constructor = "kernel"
+
+[[components]]
+name = "capmgr"
+img  = "capmgr.simple"
+deps = [{srv = "booter", interface = "init"}, {srv = "booter", interface = "addr"}]
+implements = [{interface = "capmgr"}, {interface = "init"}, {interface = "memmgr"}, {interface = "capmgr_create"}]
+constructor = "booter"
+
+[[components]]
+name = "sched"
+#img  = "sched.deferrable_server"
+img  = "sched.sporadic_server"
+#img  = "sched.sporadic_server_priority_aware"
+deps = [{srv = "capmgr", interface = "init"}, {srv = "capmgr", interface = "capmgr"}, {srv = "capmgr", interface = "memmgr"}]
+implements = [{interface = "sched"}, {interface = "init"}]
+constructor = "booter"
+
+[[components]]
+name = "schedtest"
+img  = "tests.threads"
+deps = [{srv = "sched", interface = "init"}, {srv = "sched", interface = "sched"}, {srv = "capmgr", interface = "capmgr_create"}]
+params = [{key = "lp1", value = "4,4,0,200,0,0"}, 
+          {key = "lp2", value = "4,4,0,200,0,0"}, 
+          {key = "lp3", value = "4,4,0,200,0,0"}, 
+          {key = "lp4", value = "4,4,0,200,0,0"}, 
+          {key = "lp5", value = "4,4,0,200,0,0"}, 
+          {key = "lp6", value = "4,4,0,200,0,0"}, 
+          {key = "lp7", value = "4,4,0,200,0,0"}, 
+          {key = "lp8", value = "4,4,0,200,0,0"}, 
+          {key = "lp9", value = "4,4,0,200,0,0"}, 
+          {key = "lp10", value = "4,4,0,200,0,0"}, 
+          {key = "lp11", value = "4,4,0,200,0,0"}, 
+          {key = "lp12", value = "4,4,0,200,0,0"}, 
+          {key = "lp13", value = "4,4,0,200,0,0"}, 
+          {key = "lp14", value = "4,4,0,200,0,0"}, 
+          {key = "lp15", value = "4,4,0,200,0,0"}, 
+          {key = "lp16", value = "4,4,0,200,0,0"},
+          {key = "lp22", value = "4,4,0,200,0,0"}, 
+          {key = "lp23", value = "4,4,0,200,0,0"}, 
+          {key = "lp24", value = "4,4,0,200,0,0"}, 
+          {key = "lp25", value = "4,4,0,200,0,0"}, 
+          {key = "lp26", value = "4,4,0,200,0,0"},
+          {key = "lp27", value = "4,4,2000,200,0,0"}, 
+          {key = "hp", value = "2,3,3000,2000,0,2000"}
+          ]
+constructor = "booter"  
+
+
+
+# To create test threads
+# params = [{key = "1", value = "type,priority,period_us,budget_us,execution_us,block_us"}...

@@ -250,6 +250,19 @@ sched_thd_block_timeout(thdid_t dep_id, cycles_t abs_timeout)
 	return now;
 }
 
+
+/* TODO: Added for test purposes */
+u64_t
+sched_thd_get_param(thdid_t tid, slm_thd_params_t param)
+{
+	u64_t val = 0;
+
+	slm_thd_get_param(tid, param, &val);
+
+	return val;
+}
+
+
 int
 thd_sleep(cycles_t c)
 {

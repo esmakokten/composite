@@ -9,12 +9,12 @@
 #include <ck_ring.h>
 #include <cos_component.h>
 
+#define COS_TRACE_NEVENTS 8192*4 //Must be a power of 2
 
-#define COS_TRACE_NEVENTS 10000
+#define COS_TRACE_DISABLED
+#ifndef COS_TRACE_DISABLED
 
-#ifndef COS_TRACE_ENABLED
-
-void cos_trace(const char *format, cycles_t tsc, long cpu, thdid_t tid, compid_t cid, dword_t a, dword_t b, dword_t c);
+cycles_t cos_trace(const char *format, cycles_t tsc, long cpu, thdid_t tid, compid_t cid, dword_t a, dword_t b, dword_t c);
 void cos_trace_print_buffer(void);
 
 /* Attaches the current (cycle, cpuid, thdid, compid) */

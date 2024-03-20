@@ -14,19 +14,26 @@ struct trace_ring_buf {
     struct ck_ring ring;
 };
 
+#ifndef COS_TRACE_DISABLED
+
 CK_RING_PROTOTYPE(trace_buffer, trace);
 
-struct trace_ring_buf trace_buffer;
+static struct trace_ring_buf trace_buffer;
 
 // TODO: Constructor seems to be not working, check it later cos_iniit
-void CCTOR 
+CCTOR void
 cos_trace_init()
 {
     struct trace_ring_buf *ring_buf = &trace_buffer;
+    bool is_valid = false;
+
     ck_ring_init(&ring_buf->ring, COS_TRACE_NEVENTS);
+    is_valid = ck_ring_valid(&ring_buf->ring);
+
+    assert(is_valid);
 }
 
-void
+cycles_t
 cos_trace(const char *format, cycles_t tsc, long cpu, thdid_t tid, compid_t cid, dword_t a, dword_t b, dword_t c)
 {
     struct trace new_trace;
@@ -49,9 +56,10 @@ cos_trace(const char *format, cycles_t tsc, long cpu, thdid_t tid, compid_t cid,
     if (!res) {
         unsigned int number_of_traces = ck_ring_size(&ring_buf->ring);
         printc("Trace buffer enqueue failed %d, # of traces: %d\n", res, number_of_traces);
-       // assert(res);
+        assert(res);
     }
 
+    return tsc;
 }
 
 void
@@ -70,9 +78,21 @@ cos_trace_print_buffer()
         res = CK_RING_DEQUEUE_MPSC(trace_buffer, &ring_buf->ring, ring_buf->traces, &trace);
         assert(res);
         
+        /*
         if (res) {
             printc("[%-11llu|CPU: %ld,TID:%lu,CID:%lu] ", trace.tsc, trace.cpu, trace.tid, trace.cid);
             printc( (char*)trace.format, trace.a, trace.b, trace.c);
+            printc("\n");
         }
+        */
+       
+        if (res) {
+            printc("{ \"tsc\": %llu, ", trace.tsc);
+            printc((char*)trace.format, trace.a, trace.b, trace.c);
+            printc("}\n");
+        }
+        
     }
 }
+
+#endif // COS_TRACE_DISABLED

@@ -16,8 +16,8 @@
 #include <slm.h>
 //#include <quantum.h>
 //#include <fprr.h>
-//#include <fpres.h>
-#include <fpds.h>
+#include <fpres.h>
+//#include <fpss.h>
 #include <slm_blkpt.c>
 #include <slm_modules.h>
 
@@ -33,7 +33,7 @@ struct slm_thd *slm_thd_static_cm_lookup(thdid_t id);
 
 SLM_MODULES_COMPOSE_DATA();
 //SLM_MODULES_COMPOSE_FNS(quantum, fprr, static_cm);
-SLM_MODULES_COMPOSE_FNS(fpds, fpds, static_cm);
+SLM_MODULES_COMPOSE_FNS(fpres, fpres, static_cm);
 
 struct crt_comp self;
 
@@ -177,7 +177,6 @@ thd_block(void)
 	return ret;
 }
 
-
 int
 sched_thd_block(thdid_t dep_id)
 {
@@ -229,7 +228,7 @@ thd_block_until(cycles_t timeout)
 
 	while (cycles_greater_than(timeout, slm_now())) {
 		slm_cs_enter(current, SLM_CS_NONE);
-		/* Cancel the timers for the current thread (replenishments and activations) */
+		/* TODO: Cancel the timers for the current thread (replenishments and activations) */
 		slm_timer_cancel(current);
 		if (slm_timer_add(current, timeout)) goto done;
 		if (slm_thd_block(current)) {

@@ -57,12 +57,13 @@ yield_lo_thd(void *d)
 		debug("l2,");
 
 		if (first == 0) first = 1;
-		else perfdata_add(&perf, end - start);
+		else perfdata_add(&perf, (end - start)/2);
 	}
 
 	perfdata_calc(&perf);
-#ifdef PRINT_ALL
+#ifndef PRINT_ALL
 	perfdata_all(&perf);
+	perfdata_print(&perf);
 #else
 	perfdata_print(&perf);
 #endif
@@ -78,16 +79,20 @@ test_yield(void)
 		SCHED_PARAM_CONS(SCHEDP_PRIO, 6)
 	};
 
+	unsigned prio = 0;
+
 	perfdata_init(&perf, "Context switch time", result, ITERATION);
 
 	printc("Create threads:\n");
 
 	yield_lo = sched_thd_create(yield_lo_thd, NULL);
-	printc("\tcreating lo thread %ld at prio %d\n", yield_lo, sps[1]);
+	sched_param_get(sps[1], NULL, &prio);
+	printc("\tcreating lo thread %ld at prio %d\n", yield_lo, prio);
 	sched_thd_param_set(yield_lo, sps[1]);
 
 	yield_hi = sched_thd_create(yield_hi_thd, NULL);
-	printc("\tcreating hi thread %ld at prio %d\n", yield_hi, sps[0]);
+	sched_param_get(sps[1], NULL, &prio);
+	printc("\tcreating hi thread %ld at prio %d\n", yield_hi, prio);
 	sched_thd_param_set(yield_hi, sps[0]);
 }
 
