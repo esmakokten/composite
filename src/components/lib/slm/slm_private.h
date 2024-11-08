@@ -63,10 +63,20 @@ struct slm_global {
 	struct slm_thd sched_thd;
 	struct slm_thd idle_thd;
 
+	/* TODO: Should be per core */
+	struct slm_thd *scheduled_thd; 
+	cycles_t    scheduled_thd_start;
+
 	int         cyc_per_usec;
 	int         timer_set; 	  /* is the timer set? */
 	cycles_t    timer_next;	  /* ...what is it set to? */
+	int         record_event;		  /* record the event? */
+	int		    print_event;		  /* print the event? */
+	u32_t		switch_cnt;			  /* number of switches */
+	u32_t		timer_cnt;	  /* number of switches to special threads */
+	cycles_t	policy_overhead;	  /* overhead of the policy */
 	tcap_time_t timeout_next; /* ...and what is the tcap representation? */
+	u64_t       version;
 
 	struct ps_list_head event_head;     /* all pending events for sched end-point */
 	struct ps_list_head graveyard_head; /* all deinitialized threads */
@@ -175,31 +185,96 @@ slm_cs_exit_reschedule(struct slm_thd *curr, slm_cs_flags_t flags)
 
 try_again:
 	tok  = cos_sched_sync();
-	if (flags & SLM_CS_CHECK_TIMEOUT && g->timer_set) {
-		cycles_t now = slm_now();
+	
+	/* Notify the policy that some execution has happened.				 */
+	/* Note: The costs of interrupts received before and after slm_now() */
+    /* would be included in the resulting execution			    		 */
 
+	u64_t version_saved = ps_load(&(g->version));
+	
+#ifdef BENCHMARK_POLICY_TEST
+	unsigned cycles_high, cycles_low, cycles_high1, cycles_low1;
+	
+	__asm__ __volatile__("cpuid\n\t" 
+						"rdtsc\n\t" 
+						"mov %%edx, %0\n\t" 
+						"mov %%eax, %1\n\t" : 
+						"=r" (cycles_high), "=r" (cycles_low) :: "%rax", "%rbx", "%rcx", "%rdx");
+
+	cycles_t now = (((cycles_t)cycles_high << 32) | cycles_low);
+#else 
+	cycles_t now = slm_now();
+#endif
+
+	cycles_t execution_time = now - g->scheduled_thd_start;
+	
+	/* TODO: Some useful information for testing remove afterwards */
+	g->scheduled_thd->switch_cnt++;
+	g->scheduled_thd->total_exec_time += execution_time;
+	
+	//COS_TRACE("\"event\":\"execution\", \"tid\":%ld, \"amount\":%llu, \"now\":%llu", g->scheduled_thd->tid, execution_time, now);
+
+	if(!(g->scheduled_thd->properties & SLM_THD_PROPERTY_SPECIAL)) {		
+		slm_sched_execution(g->scheduled_thd, execution_time, now);
+	}
+
+	if (flags & SLM_CS_CHECK_TIMEOUT && g->timer_set) {
 		/* Do we need to recompute the timer? */
 		if (!cycles_greater_than(g->timer_next, now)) {
+			g->timer_cnt++;
 			g->timer_set = 0;
+			if (g->timer_next)
 			/* The timer policy will likely reset the timer */
 			slm_timer_expire(now);
 		}
 	}
 
 	/* Make a policy decision! */
-	t = slm_sched_schedule();
+	t = slm_sched_schedule(now);
 	if (unlikely(!t)) t = &g->idle_thd;
 
-	assert(slm_state_is_runnable(t->state));
+	g->scheduled_thd_start = now;
+	g->scheduled_thd = t;
+
+	if (!slm_state_is_runnable(t->state)) {
+		COS_TRACE("#### Assert tid:%ld, state:%d", t->tid, t->state, 0);
+		//assert(0);
+		t = &g->idle_thd;
+		g->scheduled_thd = t;
+	}
+
+#ifdef BENCHMARK_POLICY_TEST	
+	__asm__ __volatile__("rdtscp\n\t" 
+							"mov %%edx, %0\n\t" 
+							"mov %%eax, %1\n\t" 
+							"cpuid\n\t" : 
+							"=r" (cycles_high1), "=r" (cycles_low1) :: "%rax", "%rbx", "%rcx", "%rdx");
+
+	cycles_t end = (((cycles_t)cycles_high1 << 32) | cycles_low1);
+	// TODO: Added for testing purposes, remove afterwards
+	if (g->record_event == 4) {
+
+		if (iter_res < ITER) {
+			perfdata_add(&perf_reschedule, end - now);
+			iter_res++;
+		}
+
+		g->policy_overhead += end - now;
+		g->switch_cnt++;
+	}
+#else 
+	g->switch_cnt++;
+#endif 
 	slm_cs_exit(NULL, flags);
 
 	ret = slm_thd_activate(curr, t, tok, 0);
 	
 	if (unlikely(ret != 0)) {
+		// TODO: What about previous slm_sched_schedule()? We already dequeued the thread from the list!
 		/* Assuming only the single tcap with infinite budget...should not get EPERM */
-		assert(ret != -EPERM);
-		assert(ret != -EINVAL);
-
+		printc("$$ tid:%ld, ret:%d\n", t->tid, ret);
+		COS_TRACE("#################### Asserting on slm_thd_activate TID: %d, ret: %d", t->tid, ret, 0); 
+		//assert(0);
 		/*
 		 * If the slm_thd_activate returns -EBUSY, this means we are trying to switch to the scheduler thread,
 		 * and scheduler thread still has pending events. Directly return to process pending events.

@@ -89,6 +89,7 @@ slm_blkpt_trigger(sched_blkpt_id_t blkpt, struct slm_thd *current, sched_blkpt_e
 
 		if (!blkpt_epoch_is_higher(pre, epoch)) {
 			ps_lock_release(&m->lock);
+			COS_TRACE("Error in slm_blkpt_trigger",0,0,0);
 			ERR_THROW(0, unlock); 
 		}
 		if (ps_cas(&m->epoch, pre, epoch)) break;
@@ -96,8 +97,12 @@ slm_blkpt_trigger(sched_blkpt_id_t blkpt, struct slm_thd *current, sched_blkpt_e
 
 	while ((sl = stacklist_dequeue(&m->blocked)) != NULL) {
 		t = sl->data;
+		COS_TRACE("blkpt_trigger: waking up %d\n", t->tid,0,0);
 		slm_thd_wakeup(t, 0); /* ignore retval: process next thread */
-		if (single) break;
+		if (single) {
+			COS_TRACE("blkpt_trigger: single\n",0,0,0);
+			break;
+		} 
 	}
 	ps_lock_release(&m->lock);
 	/* most likely we switch to a woken thread here */

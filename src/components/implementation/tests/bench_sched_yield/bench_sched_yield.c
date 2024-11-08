@@ -17,7 +17,7 @@
 #endif
 
 /* lo and hi is actually running at the same prio */
-#define ITERATION 10000
+#define ITERATION 1000000
 /* #define PRINT_ALL */
 
 thdid_t yield_hi = 0, yield_lo = 0;
@@ -27,6 +27,8 @@ volatile cycles_t end;
 struct perfdata perf;
 cycles_t result[ITERATION] = {0, };
 
+// TODO: Esma remove
+volatile int test_finished = 0;
 /***
  * We're measuring 2-way context switch time.
  */
@@ -34,11 +36,13 @@ void
 yield_hi_thd(void *d)
 {
 	/* Never stops running; low priority controls how many iters to run. */
-	while (1) {
+	while (test_finished == 0) {
 		debug("h1,");
 		sched_thd_yield_to(yield_lo);
 		debug("h2,");
 	}
+
+	sched_thd_block(0);
 }
 
 void
@@ -57,16 +61,20 @@ yield_lo_thd(void *d)
 		debug("l2,");
 
 		if (first == 0) first = 1;
-		else perfdata_add(&perf, end - start);
+		else perfdata_add(&perf, (end - start)/2);
 	}
 
 	perfdata_calc(&perf);
 #ifdef PRINT_ALL
 	perfdata_all(&perf);
+	perfdata_print(&perf);
 #else
 	perfdata_print(&perf);
 #endif
-
+	test_finished = 1;
+	// TODO: Remove after measurements, to print the perf in slm
+	sched_thd_get_param(cos_thdid(), 1);
+	sched_thd_block(0);	
 	while (1) ;
 }
 
@@ -77,6 +85,8 @@ test_yield(void)
 		SCHED_PARAM_CONS(SCHEDP_PRIO, 6),
 		SCHED_PARAM_CONS(SCHEDP_PRIO, 6)
 	};
+
+	unsigned prio = 0;
 
 	perfdata_init(&perf, "Context switch time", result, ITERATION);
 

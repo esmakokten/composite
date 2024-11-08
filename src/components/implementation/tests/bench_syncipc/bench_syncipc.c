@@ -38,6 +38,7 @@ client(void *d)
 		perfdata_add(&perf, end - start);
 	}
 	perfdata_calc(&perf);
+	perfdata_all(&perf);
 	perfdata_print(&perf);
 
 	printc("SUCCESS: synchronous IPC between threads\n");

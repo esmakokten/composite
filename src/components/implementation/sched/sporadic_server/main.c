@@ -14,11 +14,12 @@
  */
 
 #include <slm.h>
-#include <quantum.h>
-#include <fprr.h>
+//#include <quantum.h>
+//#include <fprr.h>
+//#include <fpres.h>
+#include <fpss.h>
 #include <slm_blkpt.c>
 #include <slm_modules.h>
-
 #include <syncipc.h>
 
 struct slm_resources_thd {
@@ -30,7 +31,8 @@ struct slm_resources_thd {
 struct slm_thd *slm_thd_static_cm_lookup(thdid_t id);
 
 SLM_MODULES_COMPOSE_DATA();
-SLM_MODULES_COMPOSE_FNS(quantum, fprr, static_cm);
+//SLM_MODULES_COMPOSE_FNS(quantum, fprr, static_cm);
+SLM_MODULES_COMPOSE_FNS(fpss, fpss, static_cm);
 
 struct crt_comp self;
 
@@ -171,7 +173,10 @@ thd_block(void)
 	/* TODO: Cancel the timers for the current thread (replenishments and activations) */
 	slm_timer_cancel(current);	
     ret = slm_thd_block(current);
-	assert(ret == 0);
+	if (ret) {
+		COS_TRACE("Error in thd_block\n", current->tid, 0, 0);
+		//assert(0);
+	}
 	if (!ret) {
 		ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
 	}
@@ -212,26 +217,11 @@ sched_thd_block_bench(thdid_t id)
 int
 sched_thd_block(thdid_t dep_id)
 {
-	if (dep_id) return -1;
-
-	return thd_block();
-}
-
-int
-sched_thd_block_periodic(thdid_t t)
-{
-	if (t) {
+	//printc("sched_thd_block tid: %lu time: %llu\n", cos_thdid(), slm_now());
+	if (dep_id) {
 		assert(0);
-	}
-
-	struct slm_thd *current = slm_thd_current();
-	int ret;
-
-	slm_cs_enter(current, SLM_CS_NONE);
-        slm_sched_block_periodic(current);
-	ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
-
-	return ret;
+	}	
+	return thd_block();
 }
 
 int
@@ -252,7 +242,7 @@ thd_wakeup(struct slm_thd *t)
 	}
 	cycles_t end = slm_now();
 	if(iter_wu < ITER) {
-		perfdata_add(&perf_wakeup, end - start);
+		perfdata_add(&perf_block, end - start);
 		iter_wu++;
 	}
 #else
@@ -291,12 +281,16 @@ thd_block_until(cycles_t timeout)
 
 	while (cycles_greater_than(timeout, slm_now())) {
 		slm_cs_enter(current, SLM_CS_NONE);
+		/* TODO: Cancel the timers for the current thread (replenishments and activations) */
 
 #ifdef BENCHMARK_POLICY_TEST_OPTION2
-		// TODO: Remove after measurements
 		cycles_t start = slm_now();
+		slm_timer_cancel(current);
+		if (slm_timer_add(current, timeout)) 
+		{	assert(0);
 
-		if (slm_timer_add(current, timeout)) goto done;
+			goto done;
+		}
 		if (slm_thd_block(current)) {
 			assert(0);
 			slm_timer_cancel(current);
@@ -307,7 +301,12 @@ thd_block_until(cycles_t timeout)
 			iter_wu++;
 		}
 #else
-		if (slm_timer_add(current, timeout)) goto done;
+		slm_timer_cancel(current);
+		if (slm_timer_add(current, timeout)) 
+		{	
+			assert(0);
+			goto done;
+		}
 		if (slm_thd_block(current)) {
 			assert(0);
 			slm_timer_cancel(current);
@@ -316,7 +315,9 @@ thd_block_until(cycles_t timeout)
 done:
 		ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
 		/* cleanup stale timeouts (e.g. if we were woken outside of the timer) */
-		slm_timer_cancel(current);
+		// TODO: BUG
+		assert(ret == 0);
+		// slm_timer_cancel(current);
 	}
 
 	return ret;
@@ -337,6 +338,24 @@ sched_thd_block_timeout(thdid_t dep_id, cycles_t abs_timeout)
 }
 
 
+int
+sched_thd_block_periodic(thdid_t t)
+{
+	if (t) {
+		assert(0);
+	}
+
+	struct slm_thd *current = slm_thd_current();
+	int ret;
+
+	slm_cs_enter(current, SLM_CS_NONE);
+        slm_sched_block_periodic(current);
+	ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
+
+	return ret;
+}
+
+
 /* TODO: Added for test purposes */
 u64_t
 sched_thd_get_param(thdid_t tid, slm_thd_params_t param)
@@ -347,7 +366,6 @@ sched_thd_get_param(thdid_t tid, slm_thd_params_t param)
 
 	return val;
 }
-
 
 int
 thd_sleep(cycles_t c)

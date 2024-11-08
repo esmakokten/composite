@@ -19,7 +19,7 @@ struct runqueue threads[NUM_CPU];
 
 /* No RR based on execution, yet */
 void
-slm_sched_fprr_execution(struct slm_thd *t, cycles_t cycles)
+slm_sched_fprr_execution(struct slm_thd *t, cycles_t cycles, cycles_t now)
 { return; }
 
 /* simply dump a core's task queue for debug usage */
@@ -51,7 +51,7 @@ debug_dump_info(void)
 }
 
 struct slm_thd *
-slm_sched_fprr_schedule(void)
+slm_sched_fprr_schedule(cycles_t now)
 {
 	int i;
 	struct slm_sched_thd *t;
@@ -87,6 +87,12 @@ slm_sched_fprr_block(struct slm_thd *t)
 
 	ps_list_rem_d(p);
 
+	return 0;
+}
+
+int
+slm_sched_fprr_block_periodic(struct slm_thd *t)
+{
 	return 0;
 }
 
@@ -175,4 +181,7 @@ slm_sched_fprr_init(void)
 	for (i = 0 ; i < SLM_FPRR_NPRIOS ; i++) {
 		ps_list_head_init(&threads[cos_cpuid()].prio[i]);
 	}
+
+	// TODO: Added for test purposes
+	printc("### SLM FPRR Scheduler Initialized ###\n");
 }

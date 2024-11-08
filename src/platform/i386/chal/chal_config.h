@@ -82,7 +82,7 @@ cos_mem_fence(void)
 }
 
 /* 256 entries. can be increased if necessary */
-#define COS_THD_INIT_REGION_SIZE (1 << 8)
+#define COS_THD_INIT_REGION_SIZE (1 << 11)
 // Static entries are after the dynamic allocated entries
 #define COS_STATIC_THD_ENTRY(i) ((i + COS_THD_INIT_REGION_SIZE + 1))
 

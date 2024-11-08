@@ -128,6 +128,7 @@ struct crt_blkpt_checkpoint {
 typedef enum {
 	CRT_BLKPT_UNIPROC   = 1, 	/* are the event operations only called on a single core? */
 	CRT_BLKPT_CRIT_SECT = 2,	/* is only one thread ever going to trigger at a time? */
+	CRT_BLKPT_WAKE_ALL  = 4,
 } crt_blkpt_flags_t;
 
 #define CRT_BLKPT_EPOCH_BLKED_BITS (sizeof(sched_blkpt_epoch_t) * 8)
@@ -294,7 +295,8 @@ crt_blkpt_id_activate(struct crt_blkpt *blkpt, sched_blkpt_id_t id, int blocked,
 	 * = max(epoch, ...) (for some wraparound-aware version of
 	 * max).
 	 */
-	sched_blkpt_trigger(id, CRT_BLKPT_EPOCH(saved + 1), 0);
+	//sched_blkpt_trigger(id, CRT_BLKPT_EPOCH(saved + 1), 0);
+	sched_blkpt_trigger(id, CRT_BLKPT_EPOCH(saved + 1), flags & CRT_BLKPT_WAKE_ALL);
 }
 
 /**

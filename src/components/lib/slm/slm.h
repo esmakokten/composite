@@ -5,6 +5,31 @@
 #include <cos_defkernel_api.h>
 #include <ps.h>
 #include <ck_ring.h>
+#include <cos_trace.h>
+#include <perfdata.h>
+
+// TODO: Remove after testing
+
+//#define BENCHMARK_POLICY_TEST
+#ifdef BENCHMARK_POLICY_TEST
+#define ITER 1000000
+extern int iter_blk;
+extern int iter_wu;
+extern int iter_res;
+extern struct perfdata perf_block;
+extern struct perfdata perf_wakeup;
+extern struct perfdata perf_reschedule;
+extern cycles_t result_t[ITER];
+extern cycles_t result_blk[ITER];
+extern cycles_t result_wu[ITER];
+#endif
+
+#ifdef MEASURE_BATCH_REPLENISHMENT
+#define ITER 1000000
+extern int iter_batch_processing;
+extern struct perfdata perf_batch_repl;
+extern cycles_t result_batchrepl[ITER];
+#endif
 
 /*
  * Simple state machine for each thread
@@ -99,6 +124,9 @@ struct slm_thd {
 	asndcap_t   asnd;
 	tcap_prio_t priority;
 	cpuid_t     cpuid;
+	/* TODO: Added for getting execution and switch count, remove after */
+	cycles_t    total_exec_time;
+	u32_t	    switch_cnt;
 
 	/* Execution information retrieved by the scheduler thread */
 	struct event_info event_info;
@@ -117,10 +145,31 @@ typedef enum {
 static inline cycles_t
 slm_now(void)
 {
-	return ps_tsc();
+//	return ps_tsc();
+
+	cycles_t now;
+
+	rdtscll(now);
+
+	return now;
 }
 
 unsigned long slm_get_cycs_per_usec(void);
+
+//TODO: Added for getting execution and switch count, remove after
+typedef enum {
+	SLM_EXEC_TIME = 0,
+	SLM_SWITCH_CNT = 1,
+	SLM_RATE_LIMIT_START = 2,
+	SLM_WAKEUP_START = 3,
+	SLM_MEASURE_START = 4,
+	SLM_MEASURE_END = 5,
+	SLM_THD_EXEC_TIME = 6,
+	SLM_THD_SWITCH_CNT = 7,
+	SLM_TIMER_CNT =	8
+} slm_thd_params_t;
+
+void slm_thd_get_param(thdid_t tid, slm_thd_params_t param, void *value);
 
 #include <slm_private.h>
 
@@ -240,6 +289,9 @@ slm_cs_enter(struct slm_thd *current, slm_cs_flags_t flags)
 		cached = __slm_cs_data(cs, &owner, &contended);
 
 		if (unlikely(owner)) {
+			slm_global()->version++;
+			COS_TRACE("##### Asserting enter contention! TID: %ld, Owner: %ld, Contended: %d #####\n", current->tid, owner->tid, contended);
+			//assert(0);
 			int ret;
 
 			ret = slm_cs_enter_contention(cs, cached, current, owner, contended, tok);
@@ -282,6 +334,8 @@ slm_cs_exit(struct slm_thd *switchto, slm_cs_flags_t flags)
 		cached = __slm_cs_data(cs, &current, &contention);
 		/* Another thread attempted to enter the critical section */
 		if (unlikely(contention)) {
+			COS_TRACE("#################### Asserting exit contention! TID: %ld, Owner: %ld, Contended: %d ###\n", current->tid, current->tid, contention);
+			//assert(0);			
 			if (!slm_cs_exit_contention(cs, current, cached, tok)) return;
 
 			continue; /* we couldn't update the CS variable, try again */

@@ -14,8 +14,10 @@
  */
 
 #include <slm.h>
-#include <quantum.h>
-#include <fprr.h>
+//#include <quantum.h>
+//#include <fprr.h>
+//#include <fpres.h>
+#include <fpds.h>
 #include <slm_blkpt.c>
 #include <slm_modules.h>
 
@@ -30,7 +32,8 @@ struct slm_resources_thd {
 struct slm_thd *slm_thd_static_cm_lookup(thdid_t id);
 
 SLM_MODULES_COMPOSE_DATA();
-SLM_MODULES_COMPOSE_FNS(quantum, fprr, static_cm);
+//SLM_MODULES_COMPOSE_FNS(quantum, fprr, static_cm);
+SLM_MODULES_COMPOSE_FNS(fpds, fpds, static_cm);
 
 struct crt_comp self;
 
@@ -167,43 +170,9 @@ thd_block(void)
 	int ret;
 
 	slm_cs_enter(current, SLM_CS_NONE);
-
-	/* TODO: Cancel the timers for the current thread (replenishments and activations) */
-	slm_timer_cancel(current);	
+	slm_timer_cancel(current);
     ret = slm_thd_block(current);
-	assert(ret == 0);
-	if (!ret) {
-		ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
-	}
-	else      slm_cs_exit(NULL, SLM_CS_NONE);
-
-	return ret;
-}
-
-int
-sched_thd_block_bench(thdid_t id)
-{
-	struct slm_thd *t = slm_thd_lookup(id);
-	int ret;
-
-	if (!t) return -1;
-
-	slm_cs_enter(t, SLM_CS_NONE);
-
-#ifdef BENCHMARK_POLICY_TEST_OPTION2
-	// TODO: Remove after measurements
-	cycles_t start = slm_now();
-	ret = slm_thd_block(t);
-	cycles_t end = slm_now();
-	if(iter_blk < ITER) {
-		perfdata_add(&perf_block, end - start);
-		iter_blk++;
-	}
-#else
-	ret = slm_thd_block(t);
-#endif
-
-	if (!ret) ret = slm_cs_exit_reschedule(t, SLM_CS_NONE);
+	if (!ret) ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
 	else      slm_cs_exit(NULL, SLM_CS_NONE);
 
 	return ret;
@@ -212,7 +181,9 @@ sched_thd_block_bench(thdid_t id)
 int
 sched_thd_block(thdid_t dep_id)
 {
-	if (dep_id) return -1;
+	if (dep_id) {
+		assert(0);
+	}
 
 	return thd_block();
 }
@@ -230,6 +201,35 @@ sched_thd_block_periodic(thdid_t t)
 	slm_cs_enter(current, SLM_CS_NONE);
         slm_sched_block_periodic(current);
 	ret = slm_cs_exit_reschedule(current, SLM_CS_NONE);
+
+	return ret;
+}
+
+
+int
+sched_thd_block_bench(thdid_t id)
+{
+	struct slm_thd *t = slm_thd_lookup(id);
+	int ret;
+
+	if (!t) return -1;
+
+	slm_cs_enter(t, SLM_CS_NONE);
+#ifdef BENCHMARK_POLICY_TEST_OPTION2
+	// TODO: Remove after measurements
+	cycles_t start = slm_now();
+	ret = slm_thd_block(t);
+	cycles_t end = slm_now();
+	if(iter_blk < ITER) {
+		perfdata_add(&perf_block, end - start);
+		iter_blk++;
+	}
+#else
+	ret = slm_thd_block(t);
+#endif
+
+	if (!ret) ret = slm_cs_exit_reschedule(t, SLM_CS_NONE);
+	else      slm_cs_exit(NULL, SLM_CS_NONE);
 
 	return ret;
 }
@@ -252,12 +252,12 @@ thd_wakeup(struct slm_thd *t)
 	}
 	cycles_t end = slm_now();
 	if(iter_wu < ITER) {
-		perfdata_add(&perf_wakeup, end - start);
+		perfdata_add(&perf_block, end - start);
 		iter_wu++;
 	}
 #else
 	ret = slm_thd_wakeup(t, 0);
-	if (ret < 0) {
+		if (ret < 0) {
 		slm_cs_exit(NULL, SLM_CS_NONE);
 		return ret;
 	}
@@ -291,11 +291,10 @@ thd_block_until(cycles_t timeout)
 
 	while (cycles_greater_than(timeout, slm_now())) {
 		slm_cs_enter(current, SLM_CS_NONE);
-
+		/* Cancel the timers for the current thread (replenishments and activations) */
 #ifdef BENCHMARK_POLICY_TEST_OPTION2
-		// TODO: Remove after measurements
 		cycles_t start = slm_now();
-
+		slm_timer_cancel(current);
 		if (slm_timer_add(current, timeout)) goto done;
 		if (slm_thd_block(current)) {
 			assert(0);
@@ -307,6 +306,8 @@ thd_block_until(cycles_t timeout)
 			iter_wu++;
 		}
 #else
+
+		slm_timer_cancel(current);
 		if (slm_timer_add(current, timeout)) goto done;
 		if (slm_thd_block(current)) {
 			assert(0);
@@ -336,7 +337,6 @@ sched_thd_block_timeout(thdid_t dep_id, cycles_t abs_timeout)
 	return now;
 }
 
-
 /* TODO: Added for test purposes */
 u64_t
 sched_thd_get_param(thdid_t tid, slm_thd_params_t param)
@@ -347,7 +347,6 @@ sched_thd_get_param(thdid_t tid, slm_thd_params_t param)
 
 	return val;
 }
-
 
 int
 thd_sleep(cycles_t c)

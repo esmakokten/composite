@@ -1,0 +1,45 @@
+[system]
+description = "Simplest system with both capability manager and scheduler, from unit_schedcomp.sh"
+
+[[components]]
+name = "booter"
+img  = "no_interface.llbooter"
+implements = [{interface = "init"}, {interface = "addr"}]
+deps = [{srv = "kernel", interface = "init", variant = "kernel"}]
+constructor = "kernel"
+
+[[components]]
+name = "capmgr"
+img  = "capmgr.simple"
+deps = [{srv = "booter", interface = "init"}, {srv = "booter", interface = "addr"}]
+implements = [{interface = "capmgr"}, {interface = "init"}, {interface = "memmgr"}, {interface = "capmgr_create"}]
+constructor = "booter"
+
+[[components]]
+name = "sched"
+img  = "sched.deferrable_server"
+#img  = "sched.sporadic_server"
+#img  = "sched.sporadic_server_priority_aware"
+deps = [{srv = "capmgr", interface = "init"}, {srv = "capmgr", interface = "capmgr"}, {srv = "capmgr", interface = "memmgr"}]
+implements = [{interface = "sched"}, {interface = "init"}]
+constructor = "booter"
+
+[[components]]
+name = "schedbench"
+img  = "tests._reservation_test"
+deps = [{srv = "sched", interface = "init"}, {srv = "sched", interface = "sched"}, {srv = "capmgr", interface = "capmgr_create"}]
+params = [{key = "1", value = "0,3,2000,40"},
+          {key = "1", value = "0,4,4000,80"},
+          {key = "1", value = "0,5,8000,160"},
+          {key = "1", value = "0,6,16000,320"},
+
+          {key = "16", value = "0,7,1000,500"},
+]
+constructor = "booter"  
+
+# To create test threads
+# params = [{key = "1", value = "type,priority,period_us,budget_us"}...
+
+
+#{key = "1", value = "0,3,2000,500"},
+#          {key = "1", value = "0,4,4000,1000"}

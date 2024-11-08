@@ -29,10 +29,17 @@ int      sched_thd_wakeup(thdid_t t);
 int      COS_STUB_DECL(sched_thd_wakeup)(thdid_t t);
 int      sched_debug_thd_state(thdid_t t);
 int      COS_STUB_DECL(sched_debug_thd_state)(thdid_t t);
+int      sched_thd_block_periodic(thdid_t t);
+int      COS_STUB_DECL(sched_thd_block_periodic)(thdid_t t);
 int      sched_thd_block(thdid_t dep_id);
 int      COS_STUB_DECL(sched_thd_block)(thdid_t dep_id);
+int      sched_thd_block_bench(thdid_t id);
+int      COS_STUB_DECL(sched_thd_block_bench)(thdid_t id);
 cycles_t sched_thd_block_timeout(thdid_t dep_id, cycles_t abs_timeout);
 cycles_t COS_STUB_DECL(sched_thd_block_timeout)(thdid_t dep_id, cycles_t abs_timeout);
+//TODO: Added for getting execution and switch count, remove after
+u64_t sched_thd_get_param(thdid_t t, sched_param_t p);
+u64_t COS_STUB_DECL(sched_thd_get_param)(thdid_t t, sched_param_t p);
 
 void     sched_set_tls(void* tls_addr);
 unsigned long sched_get_cpu_freq(void);

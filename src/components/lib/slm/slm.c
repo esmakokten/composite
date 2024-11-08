@@ -69,7 +69,9 @@ slm_thd_init_internal(struct slm_thd *t, thdcap_t thd, thdid_t tid)
 		.state = SLM_THD_RUNNABLE,
 		.priority = TCAP_PRIO_MIN,
 		.cpuid = cos_cpuid(),
-		.properties = 0
+		.properties = 0,
+		.total_exec_time = 0,
+		.switch_cnt = 0
 	};
 	ps_list_init(t, thd_list);
 	ps_list_init(t, graveyard_list);
@@ -213,12 +215,42 @@ slm_cs_exit_contention(struct slm_cs *cs, struct slm_thd *curr, slm_cs_cached_t 
 static inline int
 slm_thd_wakeup_blked(struct slm_thd *t)
 {
+	struct slm_global *g = slm_global();
 	assert(t);
 	assert(slm_thd_normal(t));
 
 	assert(t->state == SLM_THD_BLOCKED);
 	t->state = SLM_THD_RUNNABLE;
+
+#ifdef BENCHMARK_POLICY_TEST
+	// TODO: Remove after measurements
+	unsigned cycles_high, cycles_low, cycles_high1, cycles_low1;
+	__asm__ __volatile__("cpuid\n\t" 
+						"rdtsc\n\t" 
+						"mov %%edx, %0\n\t" 
+						"mov %%eax, %1\n\t" : 
+						"=r" (cycles_high), "=r" (cycles_low) :: "%rax", "%rbx", "%rcx", "%rdx");
+
 	slm_sched_wakeup(t);
+
+	__asm__ __volatile__("rdtscp\n\t" 
+						"mov %%edx, %0\n\t" 
+						"mov %%eax, %1\n\t" 
+						"cpuid\n\t" : 
+						"=r" (cycles_high1), "=r" (cycles_low1) :: "%rax", "%rbx", "%rcx", "%rdx");
+
+
+	cycles_t start = (((cycles_t)cycles_high << 32) | cycles_low);
+	cycles_t end = (((cycles_t)cycles_high1 << 32) | cycles_low1);
+
+	if(iter_wu < ITER) {
+		perfdata_add(&perf_wakeup, end - start);
+		iter_wu++;
+	}
+
+#else
+	slm_sched_wakeup(t);
+#endif
 	t->properties &= ~SLM_THD_PROPERTY_SUSPENDED;
 
 	return 0;
@@ -256,8 +288,35 @@ slm_thd_block(struct slm_thd *t)
 
 	assert(t->state == SLM_THD_RUNNABLE);
 	t->state = SLM_THD_BLOCKED;
+
+#ifdef BENCHMARK_POLICY_TEST
+	unsigned cycles_high, cycles_low, cycles_high1, cycles_low1;
+
+	__asm__ __volatile__("cpuid\n\t" 
+						"rdtsc\n\t" 
+						"mov %%edx, %0\n\t" 
+						"mov %%eax, %1\n\t" : 
+						"=r" (cycles_high), "=r" (cycles_low) :: "%rax", "%rbx", "%rcx", "%rdx");
+
 	slm_sched_block(t);
 
+
+	__asm__ __volatile__("rdtscp\n\t" 
+						"mov %%edx, %0\n\t" 
+						"mov %%eax, %1\n\t" 
+						"cpuid\n\t" : 
+						"=r" (cycles_high1), "=r" (cycles_low1) :: "%rax", "%rbx", "%rcx", "%rdx");
+	
+	cycles_t start = (((cycles_t)cycles_high << 32) | cycles_low);
+	cycles_t end = (((cycles_t)cycles_high1 << 32) | cycles_low1);
+
+	if(iter_blk < ITER) {
+		perfdata_add(&perf_block, end - start);
+		iter_blk++;
+	}
+#else
+	slm_sched_block(t);
+#endif
 	return 0;
 }
 
@@ -377,7 +436,8 @@ slm_thd_wakeup(struct slm_thd *t, int redundant)
 		 * t->state == SLM_THD_WOKEN? multiple wakeups?
 		 */
 		t->state = SLM_THD_WOKEN;
-
+		COS_TRACE("Wakeup of a runnable thread %d from %d\n", t->tid, cos_thdid(), 0);
+		//assert(0);
 		return 1;
 	}
 	assert(t->state == SLM_THD_BLOCKED);
@@ -460,6 +520,99 @@ slm_get_cycs_per_usec(void)
 	return (unsigned long)g->cyc_per_usec;
 }
 
+/* TODO: Added for test purposes */
+void
+slm_thd_get_param(thdid_t tid, slm_thd_params_t param, void* val)
+{
+
+	struct slm_global *g = slm_global();
+	struct slm_thd *t;
+
+	if (tid == 0) {
+		t = &g->idle_thd;
+	} else if (tid == 1) {
+		t = &g->sched_thd;
+	} else {
+		t = slm_thd_lookup(tid);
+	}
+
+	assert(t);
+	assert(val);
+
+	switch (param)
+	{
+	case SLM_EXEC_TIME:
+	{
+		*(cycles_t*)val = g->policy_overhead;
+		break;
+	}
+	case SLM_SWITCH_CNT:
+	{
+		*(u32_t*)val = g->switch_cnt;
+		g->print_event = 1;
+		break;
+	}
+	case SLM_RATE_LIMIT_START:
+	{
+		g->record_event = 1;
+		break;
+	}
+	case SLM_WAKEUP_START:
+	{
+		g->record_event = 2;
+		break;
+	}
+	case SLM_MEASURE_START:
+	{
+		g->record_event = 4;
+		break;
+	}
+	case SLM_MEASURE_END:
+	{
+#ifdef BENCHMARK_POLICY_TEST
+		*(u16_t*)val = iter_res;
+#endif
+		break;
+	}
+	case SLM_THD_EXEC_TIME:
+	{
+		*(cycles_t*)val = t->total_exec_time;
+		break;
+	}
+	case SLM_THD_SWITCH_CNT:
+	{
+		*(u32_t*)val = t->switch_cnt;
+		break;
+	}
+	case SLM_TIMER_CNT:
+	{
+		*(u32_t*)val = g->timer_cnt;
+		break;
+	}
+	default:
+		assert(0);
+		break;
+	}
+}
+
+#ifdef BENCHMARK_POLICY_TEST
+int iter_blk = 0;
+int iter_wu = 0;
+int iter_res = 0;
+struct perfdata perf_block;
+struct perfdata perf_wakeup;
+struct perfdata perf_reschedule;
+cycles_t result_blk[ITER] = {0, };
+cycles_t result_wu[ITER] = {0, };
+cycles_t result_t[ITER] = {0, };
+#endif
+
+#ifdef MEASURE_BATCH_REPLENISHMENT
+int iter_batch_processing = 0;
+struct perfdata perf_batch_repl;
+cycles_t result_batchrepl[ITER] = {0};
+#endif
+
 static void
 slm_sched_loop_intern(int non_block)
 {
@@ -471,6 +624,19 @@ slm_sched_loop_intern(int non_block)
 	/* Only the scheduler thread should call this function. */
 	assert(cos_thdid() == us->tid);
 
+	#ifdef BENCHMARK_POLICY_TEST
+	/* Initialize performance counter for measuring scheduler performance */
+	perfdata_init(&perf_wakeup, "Scheduler policy cost - Wakeup Policy", result_wu, ITER);
+	perfdata_init(&perf_block, "Scheduler policy cost - Block Policy", result_blk, ITER);
+	perfdata_init(&perf_reschedule, "Scheduler policy cost - Reschedule Policy", result_t, ITER);
+	#endif
+
+	#ifdef MEASURE_BATCH_REPLENISHMENT
+	/* Initialize performance counter for measuring batch replenishment */
+	perfdata_init(&perf_batch_repl, "Replenishment cost", result_batchrepl, ITER);
+	#endif
+
+	printc("Scheduler thread id %ld\n", cos_thdid());
 	while (1) {
 		int pending, ret;
 
@@ -548,11 +714,14 @@ pending_events:
 				/* remove the event from the list and get event info */
 				slm_thd_event_dequeue(t, &blocked, &cycles, &thd_timeout);
 
+				printc("$$ tid:%ld, blocked:%d, cycles:%llu\n", t->tid, blocked, cycles);
+				COS_TRACE("####### ASSERT, \"tid\":%ld, \"amount\":%llu", t->tid, cycles, 0);
+
 				/* outdated event for a freed thread */
 				if (unlikely(slm_state_is_dead(t->state))) continue;
 
 				/* Notify the policy that some execution has happened. */
-				slm_sched_execution(t, cycles);
+				slm_sched_execution(t, cycles, slm_now());
 
 				if (blocked) {
 					assert(cycles);
@@ -570,6 +739,47 @@ pending_events:
 		ret = slm_cs_exit_reschedule(us, SLM_CS_CHECK_TIMEOUT);
 		if (ret && ret != -EAGAIN && ret != -EBUSY) BUG();
 	}
+}
+
+// TODO: Added for tracing, remove
+void slm_idle_iteration(void) 
+{
+	struct slm_global *g = slm_global();
+
+	if(g->print_event) {
+		cos_trace_print_buffer();
+	}
+#ifdef MEASURE_BATCH_REPLENISHMENT
+	if (g->print_event && (iter_batch_processing)) {
+		perfdata_calc(&perf_batch_repl);
+		perfdata_print(&perf_batch_repl);
+		//perfdata_special_print(&perf_batch_repl,0);
+		iter_batch_processing = 0;
+	}
+#endif
+
+#ifdef BENCHMARK_POLICY_TEST
+	if(g->print_event) {
+		if(iter_blk) {
+			perfdata_calc(&perf_block);
+			perfdata_print(&perf_block);
+			//perfdata_special_print(&perf_block,0);
+		}
+
+		if(iter_wu) {
+			perfdata_calc(&perf_wakeup);
+			perfdata_print(&perf_wakeup);
+			//perfdata_special_print(&perf_wakeup,0);
+		}
+
+		if(iter_res) {
+			perfdata_calc(&perf_reschedule);
+			perfdata_print(&perf_reschedule);
+			//perfdata_special_print(&perf_reschedule,0);
+		}
+		g->print_event = 0;
+	}
+#endif
 }
 
 void
@@ -603,9 +813,15 @@ slm_init(thdcap_t thd, thdid_t tid)
 		.thd = sched_aep->thd,
 		.tid = sched_aep->tid,
 		.rcv = sched_aep->rcv,
+		.total_exec_time = 0,
+		.switch_cnt = 0,
 		.cpuid = cos_cpuid(),
 		.priority = TCAP_PRIO_MAX
 	};
+
+	// Initialize scheduled_thd to scheh_thd
+	g->scheduled_thd = s;
+
 	ps_list_init(s, thd_list);
 	ps_list_init(s, graveyard_list);
 	assert(s->tid == cos_thdid());
@@ -617,6 +833,8 @@ slm_init(thdcap_t thd, thdid_t tid)
 		.thd = thd,
 		.tid = tid,
 		.rcv = 0,
+		.total_exec_time = 0,
+		.switch_cnt = 0,
 		.cpuid = cos_cpuid(),
 		.priority = TCAP_PRIO_MIN
 	};
@@ -627,7 +845,14 @@ slm_init(thdcap_t thd, thdid_t tid)
 	ps_list_head_init(&g->graveyard_head);
 
 	g->cyc_per_usec = cos_hw_cycles_per_usec(BOOT_CAPTBL_SELF_INITHW_BASE);
+	printc("Cycles per usec: %d\n", g->cyc_per_usec);
+
 	g->lock.owner_contention = 0;
+	g->record_event = 0;
+	g->print_event = 0;
+	g->switch_cnt = 0;
+	g->timer_cnt = 0;
+	g->policy_overhead = 0;
 
 	slm_sched_init();
 	slm_timer_init();

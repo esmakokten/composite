@@ -1,0 +1,79 @@
+[system]
+description = "Simplest system with both capability manager and scheduler, from unit_schedcomp.sh"
+
+[[components]]
+name = "booter"
+img  = "no_interface.llbooter"
+implements = [{interface = "init"}, {interface = "addr"}]
+deps = [{srv = "kernel", interface = "init", variant = "kernel"}]
+constructor = "kernel"
+
+[[components]]
+name = "capmgr"
+img  = "capmgr.simple"
+deps = [{srv = "booter", interface = "init"}, {srv = "booter", interface = "addr"}]
+implements = [{interface = "capmgr"}, {interface = "init"}, {interface = "memmgr"}, {interface = "capmgr_create"}]
+constructor = "booter"
+
+[[components]]
+name = "sched"
+#img  = "sched.deferrable_server"
+img  = "sched.sporadic_server"
+#img  = "sched.sporadic_server_priority_aware"
+deps = [{srv = "capmgr", interface = "init"}, {srv = "capmgr", interface = "capmgr"}, {srv = "capmgr", interface = "memmgr"}]
+implements = [{interface = "sched"}, {interface = "init"}]
+constructor = "booter"
+
+[[components]]
+name = "schedtest"
+img  = "tests.threads"
+deps = [{srv = "sched", interface = "init"}, {srv = "sched", interface = "sched"}, {srv = "capmgr", interface = "capmgr_create"}]
+#params = [{key = "1025", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "513", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "257", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "129", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "65", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+params = [{key = "33", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "17", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+constructor = "booter"  
+
+# To create test threads
+# params = [{key = "1", value = "type,priority,period_us(1726967 max),budget_us,execution_us,block_us"}...
+#[{key = "1024", value = "1,4,80000,200,0,0"},
+#          {key = "hp", value = "2,3,1700000,1500000,0,80000"}
+# Cost of yield 2133b
+# Test Points:
+# REPL_WINDOW_SIZE 32, NUM_OF_THREADS 1024
+# SLM_FPRES_REPL_WINDOW_SIZE
+#constants = [{variable = "REPL_WINDOW_SIZE", value = "32"}, {variable = "MAIN_THREAD_SLEEPING_TIME_US", value = "2000000"}]
+
+
+#REPL_WINDOW_SIZE 32
+#params = [{key = "1025", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "513", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "257", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "129", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "65", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "33", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+#params = [{key = "17", value = "1,5,300000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,300000"}]
+
+
+
+
+#REPL_WINDOW_SIZE 32
+#params = [{key = "1024", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+#params = [{key = "512", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+#params = [{key = "256", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+#params = [{key = "128", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+#params = [{key = "64", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+#params = [{key = "32", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+#params = [{key = "16", value = "1,4,80000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,80000"}]
+
+#REPL_WINDOW_SIZE 16
+#params = [{key = "1024", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]
+#params = [{key = "512", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]
+#params = [{key = "256", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]
+#params = [{key = "128", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]
+#params = [{key = "64", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]
+#params = [{key = "32", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]
+#params = [{key = "16", value = "1,4,40000,200,0,0"},{key = "hp", value = "2,3,1700000,1500000,0,40000"}]

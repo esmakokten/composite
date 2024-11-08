@@ -17,7 +17,7 @@
 
 #define PERF_VAL_MIN_SZ    10
 #define PERF_DATA_NAME     64
-#define PERF_PTILE_SZ      3
+#define PERF_PTILE_SZ      4
 
 #define PERF_DATA_DEBUG
 
@@ -25,6 +25,7 @@ enum ptile_id {
 	PTILE_90 = 0,
 	PTILE_95,
 	PTILE_99,
+	PTILE_50
 };
 
 struct perfdata {
@@ -60,7 +61,7 @@ __perfdata_print_values(struct perfdata *pd)
 static inline int
 perfdata_add(struct perfdata *pd, cycles_t val)
 {
-	//if (unlikely(pd->sz >= PERF_VAL_MAX_SZ)) return -ENOSPC;
+	//if (unlikely(pd->sz >=  )) return -ENOSPC;
 	if (unlikely(pd->sz >= pd->array_size)) return -ENOSPC;
 
 	pd->values[pd->sz] = val;
@@ -192,6 +193,7 @@ perfdata_calc(struct perfdata *pd)
 	pd->ptiles[PTILE_90] = pd->values[(int)((pd->sz * 90) / 100) - 1];
 	pd->ptiles[PTILE_95] = pd->values[(int)((pd->sz * 95) / 100) - 1];
 	pd->ptiles[PTILE_99] = pd->values[(int)((pd->sz * 99) / 100) - 1];
+	pd->ptiles[PTILE_50] = pd->values[(int)((pd->sz * 50) / 100) - 1];
 }
 
 static int
@@ -226,26 +228,88 @@ static cycles_t
 perfdata_99ptile(struct perfdata *pd)
 { return pd->ptiles[PTILE_99]; }
 
+static cycles_t
+perfdata_50ptile(struct perfdata *pd)
+{ return pd->ptiles[PTILE_50]; }
+
 static void
 perfdata_print(struct perfdata *pd)
 {
-	printc("PD: %s - sz:%d,SD:%llu,Mean:%llu,99%%:%llu, Max: %llu\n",
-		pd->name, pd->sz, pd->sd, pd->avg, pd->ptiles[PTILE_99], pd->max);
+	printc("PD: %s - sz:%d, SD:%llu, Mean:%llu, 99%%:%llu, 50%%:%llu, Max: %llu, Total: %llu\n",
+		pd->name, pd->sz, pd->sd, pd->avg, pd->ptiles[PTILE_99], pd->ptiles[PTILE_50], pd->max, pd->total);
+}
+
+static void
+perfdata_special2_calc(struct perfdata *pd, cycles_t lowerbound)
+{
+	int i;
+	cycles_t sum = 0;
+
+	__inplace_merge_sort(pd->values, 0, pd->sz);
+
+	// Remove the values less than lowerbound in the sorted array
+	int new_start = 0;
+	for (i = 0 ; i < pd->sz ; i++) {
+		if (pd->values[i] > lowerbound) {
+			new_start = i;
+			break;
+		}
+	}
+	// Shift the values to the beginning of the array
+	for (i = 0 ; i < (pd->sz - new_start) ; i++) {
+		pd->values[i] = pd->values[i + new_start];
+	}
+	pd->sz -= new_start;
+
+	// Recalculate the total
+	for (i = 0 ; i < pd->sz ; i++) {
+		sum += pd->values[i];
+	}
+	pd->total = sum;
+
+	pd->min = pd->values[0];
+	pd->max = pd->values[pd->sz - 1];
+	pd->avg = pd->total / pd->sz;
+
+	for (i = 0 ; i < pd->sz ; i++) pd->var += (pd->values[i] - pd->avg) * (pd->values[i] - pd->avg);
+	pd->var /= pd->sz;
+
+	pd->sd = __sqrt_ull(pd->var);
+
+	pd->ptiles[PTILE_90] = pd->values[(int)((pd->sz * 90) / 100) - 1];
+	pd->ptiles[PTILE_95] = pd->values[(int)((pd->sz * 95) / 100) - 1];
+	pd->ptiles[PTILE_99] = pd->values[(int)((pd->sz * 99) / 100) - 1];
+	pd->ptiles[PTILE_50] = pd->values[(int)((pd->sz * 50) / 100) - 1];
+	
+}
+
+static void
+perfdata_special_print(struct perfdata *pd, cycles_t lowerbound)
+{
+	int i,j = 0;
+
+	perfdata_print(pd);
+
+	printc(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n");
+	for (i = 0 ; i < pd->sz ; i++) {
+		if (pd->values[i] < lowerbound) continue;
+		printc("V: %llu, ", pd->values[i]);
+		if (++j % 15 == 0) printc("\n");
+	}
+	printc("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n\n");
 }
 
 static void
 perfdata_all(struct perfdata *pd)
 {
 	int i;
-
-	perfdata_print(pd);
-
-	printc(">>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>>\n\n");
-
-	printc("#Latency\n");
-	for (i = 0 ; i < pd->sz ; i++) printc("V: %llu\n", pd->values[i]);
-
-	printc("<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<<\n\n");
+	printc("################################################################################\n\n");
+	printc("PD: %s - sz:%d, raw data\n", pd->name, pd->sz);
+	for (i = 0 ; i < pd->sz ; i++) {
+		printc("V: %llu, ", pd->values[i]);
+		if (i % 10 == 0) printc("\n");
+	}
+	printc("################################################################################\n");
 }
 
 #endif /* PERFDATA_H */

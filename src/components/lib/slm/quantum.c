@@ -164,8 +164,8 @@ slm_policy_timer_init(microsec_t period)
 int
 slm_timer_quantum_init(void)
 {
-	/* 10ms */
-	slm_policy_timer_init(10000);
+	/* 2ms */
+	slm_policy_timer_init(500);
 
 	return 0;
 }

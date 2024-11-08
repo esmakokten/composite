@@ -33,6 +33,7 @@ typedef enum {
 	SCHEDP_DEADLINE,    /* if != window */
 	SCHEDP_BUDGET,      /* exec time */
 	SCHEDP_WINDOW,      /* period */
+	SCHEDP_NONPREEMPT,  /* non-preemptive chunk */
 	SCHEDP_PROPORTION,  /* percent required */
 	SCHEDP_WEIGHT,      /* proportion compared to other */
 	SCHEDP_IDLE,        /* idle thread: internal use only */
