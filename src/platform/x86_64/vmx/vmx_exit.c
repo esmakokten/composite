@@ -110,6 +110,10 @@ vmx_resume(struct thread *thd)
 	msr_set(IA32_CSTAR, thd->vcpu_ctx.vmcs.guest_cstar);
 	msr_set(IA32_FMASK, thd->vcpu_ctx.vmcs.guest_fmask);
 
+	if (vmread(HOST_RIP) != (u64_t)&vmx_exit_handler_asm) {
+		VMX_DEBUG("HOST_RIP changed: 0x%p\n", vmread(HOST_RIP));
+	}
+	
 	/* Restore GPs for vcpu */
 	__asm__ __volatile__(
 				"movq %%rax, %%rsp\n\t"		\
@@ -204,6 +208,11 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 		VMX_DEBUG("exit qualification:0x%x\n", qualification);
 		vmx_assert(0);
 	}
+	if (unlikely(reason == VM_EXIT_REASON_VMCALL)) {
+		/* Start mesurement right after VMM does VMCALL */
+		printk("Measurement VMCALL intercepted on core %lu\n", cpuid);
+		vmwrite(HOST_RIP, (u64_t)&vmx_exit_for_measurement);
+	}
 
 	reason_nr = reason & 0xffff;
 	vmx_assert(reason_nr < MAX_VM_EXIT_REASONS);
@@ -247,3 +256,130 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	/* Should never come here */
 	vmx_assert(0);
 }
+
+void
+vmx_exit_handler_measurement(struct vm_vcpu_shared_region *regs)
+{
+	u64_t reason, inst_length;
+	u8_t reason_nr;
+	int ret = 0;
+	unsigned long cpuid;
+	struct cos_cpu_local_info *cos_info;
+	struct thread *thd_curr, *thd_exception_handler, *next;
+	struct vm_vcpu_shared_region *shared_region;
+	
+	cos_info = cos_cpu_local_info();
+	thd_curr = thd_current(cos_info);	
+	cpuid = cos_info->cpuid;
+
+	/* Minimal MSR save/restore - only what's absolutely necessary */
+	thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base = msr_get(IA32_GS_BASE);
+	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
+	
+	msr_set(IA32_GS_BASE, thd_curr->vcpu_ctx.vmcs.host_msr_gs_base);
+	msr_set(IA32_KERNEL_GSBASE, thd_curr->vcpu_ctx.vmcs.host_msr_gskernel_base);
+
+	//vmx_assert(cos_info);
+	//vmx_assert(thd_curr && thd_curr->cpuid == get_cpuid());
+	//vmx_assert(thd_curr->thd_type == THD_TYPE_VM);
+
+	reason = vmread(EXIT_REASON);
+	reason_nr = reason & 0xffff;
+	inst_length = vmread(EXIT_INSTRUCTION_LENGTH);
+
+	/* Fast path for VMCALL measurement - skip to next instruction and resume immediately */
+	if (reason_nr == VM_EXIT_REASON_VMCALL) {
+		u64_t rip = vmread(GUEST_RIP);
+		rip += inst_length;
+		vmwrite(GUEST_RIP, rip);
+		goto fast_resume;
+	} 
+
+	//printk("Measurement VM-exit reason: %x on core %lu\n", reason_nr, cpuid);
+	/* Other exits - go through VMM */
+	shared_region = thd_curr->vm_vcpu_shared_region;
+	thd_exception_handler = thd_curr->exception_handler;
+
+	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
+	thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
+	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
+	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
+	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);
+	
+	msr_set(IA32_TSC_AUX, thd_curr->vcpu_ctx.vmcs.host_tsc_aux);
+	msr_set(IA32_STAR, thd_curr->vcpu_ctx.vmcs.host_star);
+	msr_set(IA32_LSTAR, thd_curr->vcpu_ctx.vmcs.host_lstar);
+	msr_set(IA32_CSTAR, thd_curr->vcpu_ctx.vmcs.host_cstar);
+	msr_set(IA32_FMASK, thd_curr->vcpu_ctx.vmcs.host_fmask);
+
+	memcpy(shared_region, regs, sizeof(struct vm_vcpu_shared_region));
+	shared_region->reason = reason_nr;
+	shared_region->ip = vmread(GUEST_RIP);
+	shared_region->sp = vmread(GUEST_RSP);
+	shared_region->efer = vmread(GUEST_IA32_EFER);
+	shared_region->cr0 = vmread(GUEST_CR0);
+	shared_region->cr3 = vmread(GUEST_CR3);
+	shared_region->cr4 = vmread(GUEST_CR4);
+	shared_region->interrupt_status = vmread(GUEST_INTERRUPT_STATUS);
+	shared_region->inst_length = inst_length;
+	shared_region->gpa = vmread(EXIT_GUEST_PHYSICAL_ADDRESS);
+	shared_region->qualification = vmread(EXIT_QUALIFICATION);
+
+	/* Full state save for timer handling */
+	thd_curr->exec += 1000;
+	thd_curr->tls = msr_get(IA32_FS_BASE);
+
+	/* Timer interrupt - must go through full path */
+	if (reason_nr == VM_EXIT_REASON_EXTERNAL_INTERRUPT) {
+
+		lapic_ack();
+		copy_gp_regs(&thd_exception_handler->regs, &tmp_regs[cpuid]);
+		ret = timer_process(&tmp_regs[cpuid], thd_exception_handler);
+		
+		__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx": : "a"(ret), "b"(&tmp_regs[cpuid]),"c"(&restore_from_vm));
+		vmx_assert(0); /* Should not return */
+	}
+
+	/* Other exits - switch to VMM exception handler */
+	next = thd_exception_handler;
+	ret = cap_thd_switch(&tmp_regs[cpuid], thd_curr, next, NULL, cos_info);
+	vmx_assert(ret == 0);
+
+	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx": : "a"(ret), "b"(&tmp_regs[cpuid]),"c"(&restore_from_vm));
+	vmx_assert(0); /* Should not return */
+
+fast_resume:
+	/* Ultra-fast resume path for VMCALL measurement */
+	/* Restore guest MSRs */
+	msr_set(IA32_GS_BASE, thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base);
+	msr_set(IA32_KERNEL_GSBASE, thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base);
+
+	/* Restore GPs and vmresume directly */
+	__asm__ __volatile__(
+				"movq %%rax, %%rsp\n\t"
+				"popq %%rax\n\t"
+				"movq %%rax, %%cr2\n\t"
+				"popq %%r15\n\t"
+				"popq %%r14\n\t"
+				"popq %%r13\n\t"
+				"popq %%r12\n\t"
+				"popq %%r11\n\t"
+				"popq %%r10\n\t"
+				"popq %%r9\n\t"
+				"popq %%r8\n\t"
+				"popq %%rbx\n\t"
+				"popq %%rcx\n\t"
+				"popq %%rdx\n\t"
+				"popq %%rsi\n\t"
+				"popq %%rdi\n\t"
+				"popq %%rbp\n\t"
+				"popq %%rax\n\t"
+				"vmresume\n\t"
+				: 
+				: "a"(regs)
+				:);
+
+	/* Should never come here */
+	vmx_assert(0);
+}
+

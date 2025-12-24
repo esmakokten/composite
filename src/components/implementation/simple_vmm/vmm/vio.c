@@ -47,6 +47,9 @@ io_handler(struct vmrt_vm_vcpu *vcpu)
 	/* Fast path for virtio-net processing */
 	switch (port_id)
 	{
+	case 0xE9:
+		/* Do nothing for debug prints */
+		goto done;
 	case VIRTIO_NET_DEV_FEATURES:
 	case VIRTIO_NET_GUEST_FEATURES:
 	case VIRTIO_NET_QUEUE_ADDR:

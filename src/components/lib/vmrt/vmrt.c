@@ -253,7 +253,7 @@ ept_misconfig_handler(struct vmrt_vm_vcpu *vcpu)
 CWEAKSYMB void 
 vmcall_handler(struct vmrt_vm_vcpu *vcpu)
 {
-	VM_PANIC(vcpu);
+	GOTO_NEXT_INST(vcpu->shared_region);
 }
 
 CWEAKSYMB void 
