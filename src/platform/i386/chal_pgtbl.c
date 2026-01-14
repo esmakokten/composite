@@ -765,14 +765,14 @@ chal_pgtbl_cons(struct cap_captbl *ct, struct cap_captbl *ctsub, capid_t expandi
 	ret = cos_cas_32((u32_t *)&(((struct cap_pgtbl *)ctsub)->refcnt_flags), old_v, refcnt_flags);
 	if (ret != CAS_SUCCESS) return -ECASFAIL;
 
-	new_pte = (u64_t)((chal_va2pa((void *)((struct cap_pgtbl *)ctsub)->pgtbl) & PGTBL_FRAME_MASK));
+	new_pte = (u32_t)chal_va2pa(
+	          (void *)((unsigned long)(((struct cap_pgtbl *)ctsub)->pgtbl) & PGTBL_FRAME_MASK));
 
 	type = ((struct cap_pgtbl *)ctsub)->type;
 	if (type == PGTBL_TYPE_DEF) {
 		new_pte |= X86_PGTBL_INTERN_DEF;
 	} else if (type == PGTBL_TYPE_EPT) {
 		new_pte |= x86_EPT_INTERN_DEF;
-
 	} else {
 		/* Some error has occured in this cap! */
 		assert(0);

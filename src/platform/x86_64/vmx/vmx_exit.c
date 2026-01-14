@@ -27,14 +27,6 @@ extern u64_t cr4_fixed0_bits;
 extern u64_t cr0_fixed1_bits;
 extern u64_t cr0_fixed0_bits;
 
-int
-posted_intr_handler(struct pt_regs *regs)
-{
-	/* should not come here by design */
-	assert(0);
-	return 0;
-}
-
 static void
 posted_intr_inject(void)
 {
