@@ -13,6 +13,9 @@
 #include <stdint.h>
 #include <emmintrin.h>
 
+#pragma GCC diagnostic push
+#pragma GCC diagnostic ignored "-Wimplicit-fallthrough"
+
 
 //---------------------------------------------------------------------
 // force inline for compilers
@@ -685,5 +688,6 @@ static void* memcpy_fast(void *destination, const void *source, size_t size)
 	return destination;
 }
 
+#pragma GCC diagnostic pop
 
 #endif
