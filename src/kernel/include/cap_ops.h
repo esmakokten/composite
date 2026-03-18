@@ -19,10 +19,23 @@ __cap_capactivate_pre(struct captbl *t, capid_t cap, capid_t capin, cap_t type, 
 	int                ret;
 
 	ct = (struct cap_captbl *)captbl_lkup(t, cap);
-	if (unlikely(!ct || ct->h.type != CAP_CAPTBL)) cos_throw(err, -EINVAL);
-	if (unlikely(ct->refcnt_flags & CAP_MEM_FROZEN_FLAG)) cos_throw(err, -EINVAL);
+	if (unlikely(!ct || ct->h.type != CAP_CAPTBL)) {
+		if (ct) {
+			printk("__cap_capactivate_pre: cap %d is not a captbl\n", (int)cap);
+		} else {
+			printk("__cap_capactivate_pre: cap %d not found\n", (int)cap);
+		}
+		cos_throw(err, -EINVAL);
+	}
+	if (unlikely(ct->refcnt_flags & CAP_MEM_FROZEN_FLAG)) {
+		printk("__cap_capactivate_pre: cap %d is frozen\n", (int)cap);
+		cos_throw(err, -EINVAL);
+	} 
 
 	h = captbl_add(ct->captbl, capin, type, &ret);
+	if (ret) {
+		printk("__cap_capactivate_pre: failed to add capin %d to captbl %d, error %d\n", (int)capin, (int)cap, ret);
+	}
 err:
 	*retval = ret;
 	return h;

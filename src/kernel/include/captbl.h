@@ -283,8 +283,14 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 	int                ret = 0, off;
 	cap_sz_t           sz  = __captbl_cap2sz(type);
 
-	if (unlikely(sz == CAP_SZ_ERR)) cos_throw(err, -EINVAL);
-	if (unlikely(cap >= __captbl_maxid())) cos_throw(err, -EINVAL);
+	if (unlikely(sz == CAP_SZ_ERR)) {
+		printk("captbl_add: invalid cap type %d\n", (int)type);
+	  	cos_throw(err, -EINVAL);
+	}
+	if (unlikely(cap >= __captbl_maxid())) {
+		printk("captbl_add: cap %d exceeds max cap id\n", (int)cap);
+	  	cos_throw(err, -EINVAL);
+	}
 
 	p = __captbl_lkupan(t, cap, CAPTBL_DEPTH, NULL);
 	if (unlikely(!p)) cos_throw(err, -EPERM);
@@ -348,7 +354,10 @@ captbl_add(struct captbl *t, capid_t cap, cap_t type, int *retval)
 	}
 
 	if (l.size != sz) l.size = sz;
-	if (unlikely(__captbl_header_validate(&l, sz))) cos_throw(err, -EINVAL);
+	if (unlikely(__captbl_header_validate(&l, sz))){
+		printk("captbl_add: header validation failed for cap %d, type %d\n", (int)cap, (int)type);
+		cos_throw(err, -EINVAL);
+	}
 
 	/* FIXME: we should _not_ do this here.  This should be done
 	 * in step 3 of the protocol for setting capabilities, not 1 */

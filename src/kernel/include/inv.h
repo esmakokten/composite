@@ -16,6 +16,9 @@
 #include "thd.h"
 #include "chal/call_convention.h"
 
+/* Forward declaration for VM IPC: resume VM after sret from vmcall-based IPC */
+void vmx_resume(struct thread *thd);
+
 struct cap_sinv {
 	struct cap_header h;
 	struct comp_info  comp_info;
@@ -323,6 +326,23 @@ sret_ret(struct thread *thd, struct pt_regs *regs, struct cos_cpu_local_info *co
 	if (unlikely(!ci)) {
 		__userregs_set(regs, 0xDEADDEAD, 0, 0);
 		return;
+	}
+
+	/*
+	 * VM IPC return path: if the thread is a VM vCPU returning to its
+	 * base component (invstk depth 0), copy the IPC return values into
+	 * shared_region and resume the VM. The depth-0 check ensures that
+	 * chained IPC (VM→A→B) only triggers vmresume on the final sret.
+	 */
+	if (unlikely(thd->thd_type == THD_TYPE_VM &&
+	             curr_invstk_top(cos_info) == 0)) {
+		struct vm_vcpu_shared_region *sr =
+			(struct vm_vcpu_shared_region *)thd->vm_vcpu_shared_region;
+
+		sr->ax = __userregs_getinvret(regs);
+		sr->si = regs->si;
+		sr->di = regs->di;
+		vmx_resume(thd); /* does not return */
 	}
 
 	if (unlikely(!ltbl_isalive(&ci->liveness))) {

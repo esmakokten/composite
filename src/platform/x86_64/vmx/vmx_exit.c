@@ -9,6 +9,7 @@
 #include <vmx_utils.h>
 #include <vmx_vmcs.h>
 #include <vmx_exit.h>
+#include <inv.h>
 
 void lapic_ack(void);
 void restore_from_vm(void);
@@ -230,7 +231,91 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	/* Save fs for vcpu, this will be restoed later in the thread switch path, thus safe */
 	thd_curr->tls = msr_get(IA32_FS_BASE);
 
-	if (reason_nr == VM_EXIT_REASON_EXTERNAL_INTERRUPT) {
+	
+	if (reason_nr == VM_EXIT_REASON_VMCALL) {
+		/*
+		 * VM IPC: Guest vmcall → sinv_call on thd_curr (the VM vCPU thread).
+		 * thd_curr migrates to the server component via sinv, exactly like
+		 * a native Composite component calling cos_sinv.
+		 * On server sret, sret_ret detects THD_TYPE_VM and calls vmx_resume.
+		 * 
+		 * Guest convention: rax=fn, rbx=arg0, rcx=arg1, rdx=arg2, rsi=arg3
+		 * Composite sinv convention (x86_64): arg1=bx, arg2=si, arg3=di, arg4=dx
+		 */
+		word_t fn  = shared_region->ax;
+		word_t a0  = shared_region->bx, a1 = shared_region->cx;
+		word_t a2  = shared_region->dx, a3 = shared_region->si;
+		struct comp_info *curr_ci;
+		struct cap_sinv  *sinvc;
+		unsigned long     ip, sp;
+
+		curr_ci = thd_invstk_current(thd_curr, &ip, &sp, cos_info);
+		if (unlikely(!curr_ci || fn >= VM_IPC_MAX_SINV_CAPS)) goto vmcall_err;
+
+		sinvc = (struct cap_sinv *)captbl_lkup(curr_ci->captbl,
+		                                        VM_IPC_SINV_CAP_BASE + fn);
+		
+		if (unlikely(!sinvc || sinvc->h.type != CAP_SINV)) goto vmcall_err;
+
+		/* Map guest args to Composite sinv calling convention */
+		
+		tmp_regs[cpuid].sp = sp;
+		tmp_regs[cpuid].ip = ip;
+
+		tmp_regs[cpuid].bx = a0;  /* arg1: rbx → bx */
+		tmp_regs[cpuid].si = a1;  /* arg2: rcx → si */
+		tmp_regs[cpuid].di = a2;  /* arg3: rdx → di */
+		tmp_regs[cpuid].dx = a3;  /* arg4: rsi → dx */
+
+		/*printk("cos: debug vmcall from VM (fn %lu, a0 %lu, a1 %lu, a2 %lu, a3 %lu) → bx=%lu si=%lu di=%lu dx=%lu\n",
+			fn, a0, a1, a2, a3,
+			tmp_regs[cpuid].bx, tmp_regs[cpuid].si,
+			tmp_regs[cpuid].di, tmp_regs[cpuid].dx); 
+*/
+		/* Advance guest RIP past the vmcall instruction.
+		 * This is done now so that when sret_ret calls vmx_resume,
+		 * the guest continues at the instruction after vmcall. */
+		shared_region->ip += shared_region->inst_length;
+
+		sinv_call(thd_curr, sinvc, &tmp_regs[cpuid], cos_info);
+
+		/* ret=0: no thread switch → restore_from_vm → sysretq
+		 * thd_curr runs the server at its entry point. */
+		ret = 0;
+		goto vmcall_done;
+
+	vmcall_err:
+	    printk("cos: invalid vmcall from VM (fn %lu, slot %lu)\n",
+	           fn, VM_IPC_SINV_CAP_BASE + fn);
+		printk("cos: sinvc=%p, type=%d\n", sinvc, sinvc ? sinvc->h.type : -1);
+		
+		/* Debug: Print addresses returned by captbl_lkup for all slots */
+		printk("cos: captbl_lkup results for all VM IPC slots:\n");
+		for (int i = 0; i < VM_IPC_MAX_SINV_CAPS; i++) {
+			void *ptr = captbl_lkup(curr_ci->captbl, VM_IPC_SINV_CAP_BASE + i);
+			printk("cos:   slot %d (cap %d): ptr=%p", i, VM_IPC_SINV_CAP_BASE + i, ptr);
+			if (ptr) {
+				struct cap_sinv *s = (struct cap_sinv *)ptr;
+				printk(", type=%d, entry=%p", s->h.type, s->entry_addr);
+			}
+			printk("\n");
+		}
+		
+		/* Print all installed SINV caps for debugging */
+		printk("cos: Installed SINV capabilities:\n");
+		for (int i = 0; i < VM_IPC_MAX_SINV_CAPS; i++) {
+			struct cap_sinv *s = (struct cap_sinv *)captbl_lkup(curr_ci->captbl,
+			                                                     VM_IPC_SINV_CAP_BASE + i);
+			if (s && s->h.type == CAP_SINV) {
+				printk("cos:   slot %d (cap %d): entry=%p, comp_id=%d\n",
+				       i, VM_IPC_SINV_CAP_BASE + i, s->entry_addr, 
+				       s->comp_info.liveness.id);
+			}
+		}
+		
+		shared_region->ax  = (word_t)-EINVAL;
+		shared_region->ip += shared_region->inst_length;
+	} else if (reason_nr == VM_EXIT_REASON_EXTERNAL_INTERRUPT) {
 		u64_t intr_info;
 		u8_t vector;
 
@@ -272,6 +357,7 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 		vmx_assert(ret == 0);
 	}
 
+	vmcall_done: ;
 	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx": : "a"(ret), "b"(&tmp_regs[cpuid]),"c"(&restore_from_vm));
 
 	/* Should never come here */

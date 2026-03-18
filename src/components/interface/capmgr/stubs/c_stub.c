@@ -198,3 +198,11 @@ COS_CLIENT_STUB(thdcap_t, capmgr_initaep_create, spdid_t child, struct cos_aep_i
 	/* initcaps are copied to INITXXX offsets in the dst component */
 	return aep->thd;
 }
+
+COS_CLIENT_STUB(int, capmgr_vm_sinv_install, compid_t vm_comp_id, capid_t sinv_cap, capid_t slot)
+{
+	COS_CLIENT_INVCAP;
+	word_t unused1, unused2;
+
+	return cos_sinv_2rets(uc, vm_comp_id, sinv_cap, slot, 0, &unused1, &unused2);
+}

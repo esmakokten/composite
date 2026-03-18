@@ -472,7 +472,10 @@ crt_comp_vm_create(struct crt_comp *c, char *name, compid_t id, prot_domain_t pr
 
 	/* FIXME: the VM's memory first set up its head_ptr to be 4K just to keep legacy code path simple, should be fixed later */
 	vaddr_t heap_ptr = PAGE_SIZE_4K;
-	capid_t cap_frontier = BOOT_CAPTBL_FREE;
+	/* VM components need extra captbl space for VM IPC sinv capabilities.
+	 * Set cap_frontier to accommodate VM_IPC_SINV_CAP_BASE + VM_IPC_MAX_SINV_CAPS.
+	 * This ensures the captbl is pre-allocated with enough internal nodes. */
+	capid_t cap_frontier = 512;  /* Large enough for VM IPC slots at 256+ */
 	vaddr_t entry = 0;
 
 	if (crt_vm_comp_init(c, name, id, 0)) BUG();

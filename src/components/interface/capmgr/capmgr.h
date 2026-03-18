@@ -88,4 +88,8 @@ capid_t COS_STUB_DECL(capmgr_vm_vmcb_create)(vm_vmcscap_t vmcs_cap, vm_msrbitmap
 thdcap_t capmgr_vm_vcpu_create(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid);
 thdcap_t COS_STUB_DECL(capmgr_vm_vcpu_create)(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid);
 
+/* VM IPC: install a sinv cap from the calling VMM's captbl into the VM component's captbl */
+int capmgr_vm_sinv_install(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot);
+int COS_STUB_DECL(capmgr_vm_sinv_install)(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot);
+
 #endif /* CAPMGR_H */

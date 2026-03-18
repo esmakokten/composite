@@ -1030,6 +1030,49 @@ capmgr_vm_vcpu_create(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid)
 	return capmgr_thd_create_ext(vm_comp, vmcb_cap, tid);
 }
 
+int
+capmgr_vm_sinv_install(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot)
+{
+	compid_t vmm_id = (compid_t)cos_inv_token();
+	struct cm_comp *vmm = ss_comp_get(vmm_id);
+	struct cm_comp *vm  = ss_comp_get(vm_comp_id);
+	struct cos_compinfo *vmm_ci, *vm_ci;
+	capid_t dst_slot;
+
+	assert(vmm && vm);
+	/* Only the owning VMM can install caps for its VM */
+	assert(vm->comp.vm_comp_info.vmm_comp_id == vmm->comp.id);
+	assert(slot < VM_IPC_MAX_SINV_CAPS);
+
+	vmm_ci = cos_compinfo_get(vmm->comp.comp_res);
+	vm_ci  = cos_compinfo_get(vm->comp.comp_res);
+
+	dst_slot = VM_IPC_SINV_CAP_BASE + slot;
+
+	printc("capmgr: installing sinv cap %d into VM comp %ld captbl slot %d\n",
+	       sinv_cap, vm_comp_id, dst_slot);
+	/* Ensure the VM's capability table is large enough to hold the new slot. 
+	 * We bump the frontier and manually call the expand logic if needed. */
+	if (vm_ci->cap_frontier <= dst_slot) {
+		vm_ci->cap_frontier += (dst_slot - vm_ci->cap_frontier + 1);
+		if (vm_ci->caprange_frontier <= dst_slot) {
+			vm_ci->caprange_frontier += CAPTBL_EXPAND_SZ;
+			missing_captbl_node_expand(vm_ci);
+		}
+	}
+
+	/* Copy the sinv cap from the VMM's captbl into the VM component's captbl */
+	if (cos_cap_cpy_at(vm_ci, dst_slot, vmm_ci, sinv_cap)) {
+		printc("capmgr_vm_sinv_install: failed to copy sinv cap %d to VM comp %ld slot %d\n",
+		       sinv_cap, vm_comp_id, dst_slot);
+		return -1;
+	}
+
+	printc("capmgr: installed sinv cap %d into VM comp %ld captbl at slot %d\n",
+	       sinv_cap, vm_comp_id, dst_slot);
+	return 0;
+}
+
 thdcap_t  capmgr_aep_create_thunk(struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax) { BUG(); return 0; }
 thdcap_t  capmgr_aep_create_ext(spdid_t child, struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax, arcvcap_t *extrcv) { BUG(); return 0; }
 asndcap_t capmgr_asnd_create(spdid_t child, thdid_t t) { BUG(); return 0; }

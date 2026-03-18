@@ -253,8 +253,10 @@ cap_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to, capid_t cap_from, ca
 	cap_t              cap_type;
 
 	ctfrom = captbl_lkup(t, cap_from);
-	if (unlikely(!ctfrom)) return -ENOENT;
-
+	if (unlikely(!ctfrom)) {
+		printk("cap_cpy: cap_from %d not found\n", (int)cap_from);	
+		return -ENOENT;
+	}
 	cap_type = ctfrom->type;
 
 	if (cap_type == CAP_CAPTBL) {
@@ -262,13 +264,19 @@ cap_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to, capid_t cap_from, ca
 		cap_t type;
 
 		ctfrom = captbl_lkup(((struct cap_captbl *)ctfrom)->captbl, capin_from);
-		if (unlikely(!ctfrom)) return -ENOENT;
+		if (unlikely(!ctfrom)) {
+			printk("cap_cpy: capin_from %d not found in captbl %d\n", (int)capin_from, (int)cap_from);
+			return -ENOENT;
+		}
 
 		type = ctfrom->type;
 		sz   = __captbl_cap2bytes(type);
 
 		ctto = __cap_capactivate_pre(t, cap_to, capin_to, type, &ret);
-		if (!ctto) return -EINVAL;
+		if (!ctto) {
+			printk("cap_cpy: __cap_capactivate_pre failed for cap_to %d, capin_to %d\n", (int)cap_to, (int)capin_to);
+			return -EINVAL;
+		}
 
 		memcpy(ctto->post, ctfrom->post, sz - sizeof(struct cap_header));
 
@@ -307,6 +315,16 @@ cap_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to, capid_t cap_from, ca
 		ret = chal_pgtbl_cpy(t, cap_to, capin_to, (struct cap_pgtbl*)ctfrom, capin_from, cap_type, flags);
 	} else {
 		ret = -EINVAL;
+	}
+
+	if (ret != 0) {
+		printk("cap_cpy failed: %d\n", (int)ret);
+		// Debug code to print out more info about the failure. Can be removed later.
+		struct cap_header *debug_from = captbl_lkup(t, cap_from);
+		struct cap_header *debug_to = captbl_lkup(t, cap_to);
+		printk("cap_from: %d, cap_to: %d\n", (int)cap_from, (int)cap_to);
+		printk("debug_from: %p, type: %d\n", debug_from, debug_from ? debug_from->type : -1);
+		printk("debug_to: %p, type: %d\n", debug_to, debug_to ? debug_to->type : -1);	
 	}
 
 	return ret;

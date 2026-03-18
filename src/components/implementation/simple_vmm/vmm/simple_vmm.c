@@ -8,6 +8,7 @@
 #include <cos_kernel_api.h>
 #include <static_slab.h>
 #include <sched.h>
+#include <capmgr.h>
 #include <contigmem.h>
 #include <shm_bm.h>
 #include <vmrt.h>
@@ -161,6 +162,23 @@ cos_init(void)
 	struct vmrt_vm_vcpu *vcpu;
 	g_vm = vm_comp_create();
 	printc("VMM: Created VM with %d vCPUs: comp_id=%lu, %p\n", g_num_vcpus, g_vm->comp_id, g_vm);
+
+	/*
+	 * VM IPC: Install pong sinv cap into the VM component's captbl
+	 * Slot 0: pong_args (sum of 4 arguments)
+	 */
+	{
+		extern struct usr_inv_cap __cosrt_ucap_pong_args;
+		int ret;
+
+		ret = capmgr_vm_sinv_install(g_vm->comp_id, __cosrt_ucap_pong_args.cap_no, 0);
+		if (ret) {
+			printc("VMM: WARNING: failed to install pong_args (ret=%d)\n", ret);
+		} else {
+			printc("VMM: Installed pong_args at slot 0 (captbl[%d])\n",
+			       VM_IPC_SINV_CAP_BASE);
+		}
+	}
 
 	if (nic_netio_shmem_map) {
 		/* Create TX thread for transmitting packets to NIC */

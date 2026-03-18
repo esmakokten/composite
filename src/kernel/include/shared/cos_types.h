@@ -689,4 +689,8 @@ enum {
 #define VM_EXIT_REASON_XSETBV				55
 #define VM_EXIT_REASON_APIC_WRITE			56
 
+/* VM IPC: sinv caps for vmcall-based IPC start at this captbl slot in the VM component */
+#define VM_IPC_SINV_CAP_BASE 64
+#define VM_IPC_MAX_SINV_CAPS 16
+
 #endif /* TYPES_H */
