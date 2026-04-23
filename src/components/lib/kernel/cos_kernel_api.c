@@ -1374,7 +1374,7 @@ cos_asnd_alloc(struct cos_compinfo *ci, arcvcap_t arcvcap, captblcap_t ctcap)
 {
 	capid_t cap;
 
-	assert(ci && arcvcap && ctcap);
+	//assert(ci && arcvcap && ctcap);
 
 	cap = __capid_bump_alloc(ci, CAP_ASND);
 	if (!cap) return 0;

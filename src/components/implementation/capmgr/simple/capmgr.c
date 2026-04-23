@@ -142,6 +142,8 @@ cm_rcv_alloc_in(struct crt_comp *c, struct crt_rcv *sched, thdclosure_index_t cl
 
 	*tid = cos_introspect(target_ci, res.thd, THD_GET_TID);
 	*thdcap = res.thd;
+	printc("capmgr: created rcv with thdidx %d, tid %d, thdcap %d, rcv %d for closure_id %d in comp %s\n",
+	       closure_id, *tid, res.thd, res.rcv, closure_id, c->name);
 
 	return r;
 }
@@ -960,8 +962,90 @@ capmgr_vm_vcpu_create(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid)
 	return capmgr_thd_create_ext(vm_comp, vmcb_cap, tid);
 }
 
-thdcap_t  capmgr_aep_create_thunk(struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax) { BUG(); return 0; }
-thdcap_t  capmgr_aep_create_ext(spdid_t child, struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax, arcvcap_t *extrcv) { BUG(); return 0; }
+
+thdcap_t
+capmgr_aep_create_thunk(struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax)
+{
+        compid_t client = (compid_t)cos_inv_token();
+        struct cm_comp *c;
+        struct cm_rcv *r;
+        thdid_t tid = 0;
+        thdcap_t thdcap;
+        struct crt_rcv_resources res = { 0 };
+        crt_rcv_flags_t flags = owntc ? 0 : CRT_RCV_TCAP_INHERIT;
+
+        c = ss_comp_get(client);
+        if (!c) return 0;
+
+        r = cm_rcv_alloc_in(&c->comp, &c->sched_rcv[cos_cpuid()]->rcv, idx, flags, &tid, &thdcap);
+        if (!r) return 0;
+
+        if (crt_rcv_alias_in(&r->rcv, &c->comp, &res, CRT_RCV_ALIAS_THD | CRT_RCV_ALIAS_TCAP)) {
+                return 0;
+        }
+
+        a->fn   = NULL;
+        a->data = NULL;
+        a->thd  = res.thd;
+        a->tid  = tid;
+        a->rcv  = res.rcv;
+        a->tc   = res.tc;
+
+        return res.thd;
+}
+
+thdcap_t
+capmgr_aep_create_ext(u32_t spdid_thdidx, struct cos_aep_info *a, int owntc, u32_t key_ipimax, microsec_t ipiwin, arcvcap_t *extrcv)
+{
+        spdid_t             child  = spdid_thdidx >> 16;
+        thdclosure_index_t  idx    = spdid_thdidx & 0xFFFF;
+        compid_t schedid = (compid_t)cos_inv_token();
+        struct cm_comp *s, *c;
+        struct cm_rcv *r;
+        thdid_t tid = 0;
+        thdcap_t thdcap;
+        struct crt_rcv_resources res = { 0 };
+        crt_rcv_flags_t flags = owntc ? 0 : CRT_RCV_TCAP_INHERIT;
+
+        (void)key_ipimax; (void)ipiwin;
+
+        c = ss_comp_get(child);
+
+        if (schedid != capmgr_comp_sched_get(child)) {
+                if (c->comp.flags & CRT_COMP_VM) {
+                        schedid = c->comp.vm_comp_info.vmm_comp_id;
+                } else {
+                        printc("capmgr: Component asking to create AEP from %ld, not its sched %ld\n",
+                                schedid, (compid_t)child);
+                        return 0;
+                }
+        }
+
+        s = ss_comp_get(schedid);
+        if (!c || !s) return 0;
+
+        r = cm_rcv_alloc_in(&c->comp, &s->sched_rcv[cos_cpuid()]->rcv, idx, flags, &thdcap, &tid);
+        if (!r) return 0;
+
+        if (crt_rcv_alias_in(&r->rcv, &s->comp, &res, CRT_RCV_ALIAS_THD | CRT_RCV_ALIAS_TCAP | CRT_RCV_ALIAS_RCV)) {
+                return 0;
+        }
+
+        a->fn   = NULL;
+        a->data = NULL;
+        a->thd  = res.thd;
+        a->tid  = tid;
+        a->rcv  = r->aliased_cap;
+        a->tc   = res.tc;
+
+		printc("capmgr: created AEP for child %ld, thdidx %d, tid %d, thdcap %d, rcv %d\n",
+		       child, idx, tid, res.thd, res.rcv);
+
+        *extrcv = res.rcv;
+
+        return res.thd;
+}
+
 asndcap_t capmgr_asnd_create(spdid_t child, thdid_t t) { BUG(); return 0; }
 asndcap_t capmgr_asnd_rcv_create(arcvcap_t rcv) { BUG(); return 0; }
 asndcap_t capmgr_asnd_key_create(cos_channelkey_t key) { BUG(); return 0; }

@@ -1013,9 +1013,11 @@ crt_rcv_create_in(struct crt_rcv *r, struct crt_comp *c, struct crt_rcv *sched, 
 	res = (struct crt_rcv_resources) {
 		.tc   = tcap,
 		.thd  = thdcap,
-		.tid  = 0,
+		.tid  = cos_introspect(ci, thdcap, THD_GET_TID),
 		.rcv  = rcvcap,
 	};
+	printc("crt_rcv_create_in: allocated thd %d, tid %d, tcap %d, rcvcap %d for closure_id %d in comp %s\n",
+	       thdcap, res.tid, tcap, rcvcap, closure_id, c->name);
 	if (crt_rcv_create_with(r, c, &res)) BUG();
 
 	if (sched) crt_refcnt_take(&sched->refcnt);

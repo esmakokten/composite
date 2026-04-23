@@ -21,6 +21,7 @@ sched_aep_create(struct cos_aep_info *aep, cos_aepthd_fn_t fn, void *data, int o
 	if (idx < 1) return 0;
 
 	memset(aep, 0, sizeof(struct cos_aep_info));
+	printc("DEBUG AEP - CALL sched_aep_create_closure\n");
 	ret = sched_aep_create_closure(idx, owntc, key, ipiwin, ipimax, &rcv);
 	if (ret == 0) return 0;
 

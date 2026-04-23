@@ -66,6 +66,7 @@ slm_thd_mem_alloc(thdcap_t _cap, thdid_t _tid, thdcap_t *thd, thdid_t *tid)
 	struct slm_thd_container *t   = NULL;
 	struct slm_thd_container *ret = NULL;
 
+	printc("DEBUG AEP - Sched tid: %lu\n", _tid);
 	ret = t = ss_thd_alloc_at_id(_tid);
 	if (!t) assert(0);
 
@@ -531,7 +532,17 @@ syncipc_reply_wait(int ipc_ep, word_t arg0, word_t arg1, word_t *ret0, word_t *r
 thdid_t
 sched_aep_create_closure(thdclosure_index_t id, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax, arcvcap_t *rcv)
 {
-	return -1;
+        id = id & 0xFFFF; owntc = owntc & 0xFFFF; struct slm_thd *thd = NULL;
+        sched_param_t params[] = { 0 };
+
+        id = id & 0xFFFF;
+		owntc = owntc & 0xFFFF;
+
+		printc("DEBUG AEP - SCHED: aep_alloc_in\n");
+		thd = aep_alloc_in(cos_inv_token(), id, owntc, key, ipiwin, ipimax, params, 0, rcv);
+        if (!thd) return 0;
+        
+        return thd->tid;
 }
 
 unsigned long
@@ -556,6 +567,7 @@ slm_ipithd_create(thd_fn_t fn, void * data, crt_rcv_flags_t flags, thdcap_t *thd
 	r->rcv = capmgr_rcv_alloc(fn, data, flags, &r->asnd, &_thd, &_tid);
 	r->cpuid = cos_cpuid();
 	r->tid = _tid;
+	printc("DEBUG IPI - Created thread with tid: %lu\n", _tid);
 
 	t = slm_thd_mem_alloc(_thd, _tid, thdcap, tid);
 	if (!t) ERR_THROW(NULL, done);
