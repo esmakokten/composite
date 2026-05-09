@@ -1,7 +1,7 @@
 [submodule "src/components/lib/ps/ps"]
 	path = src/components/lib/ps/ps
-	url = https://github.com/gwsystems/ps.git
-	branch = master
+	url = https://github.com/esmakokten/ps.git
+	branch = ps_arch_fix
 [submodule "src/components/lib/ck/ck"]
 	path = src/components/lib/ck/ck
 	url = https://github.com/gwsystems/ck.git
