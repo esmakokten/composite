@@ -1,0 +1,615 @@
+c[?7l[2J[0mSeaBIOS (version 1.16.3-debian-1.16.3-2)
+Booting from Hard Disk...
+Boot failed: could not read the boot disk
+
+Booting from Floppy...
+Boot failed: could not read the boot disk
+
+Booting from DVD/CD...
+Initial component found:
+kenrel mem layout:
+	- [ffff800014f18000, ffff800015c8e330, ffff800015c8f000)
+Memory regions:
+	- 0 (Available): [00000000, 0009fc00) sz = 0MB + 639KB
+	- 0 (Reserved ): [0009fc00, 000a0000) sz = 0MB + 1KB
+	- 1 (Reserved ): [000f0000, 00100000) sz = 0MB + 64KB
+	- 2 (Available): [00100000, bffe0000) sz = 3070MB + 896KB
+	  memory usable at boot time: aa351cd0 (2723 MB + 327 KB) [ffff800015c8f000, ffff8000bffe0000)
+	- 3 (Reserved ): [bffe0000, c0000000) sz = 0MB + 128KB
+	- 4 (Reserved ): [feffc000, ff000000) sz = 0MB + 16KB
+	- 5 (Reserved ): [fffc0000, 100000000) sz = 0MB + 256KB
+	- 6 (Available): [100000000, 240000000) sz = 5120MB + 0KB
+	  memory usable at boot time: 140000000 (5120 MB + 0 KB) [ffff800100000000, ffff800240000000)
+	Amount of wasted memory due to layout is 0 MB + 0x0 B
+Processor information:
+	Vendor: GenuineIntel
+	Brand string 13th Gen Intel(R) Core(TM) i5-1335U
+	Features [rdtsc fpu superpages sysenter/exit clflush apic x2apic tsc-deadline rdtscp ]
+Initializing virtual memory
+	Setting up initial page directory.
+The CPU supports SSE3, SSE4, AVX, AVX2 and XSAVE
+The CPU supports XSAVEOPT, XSAVEC and XSAVES instructions
+The CPU maximum XSAVE area is: 2696
+The AVX area offset is: 576
+ACPI initialization
+	Found good RSDP @ ffff8000000f5270
+	RDST paddr is @ 00000000bffe21cc
+	RSDP lenth is :0
+	XSDT paddr is @ 0000000000000000
+	RSDT vaddr is @ ffff80027ffe21cc
+Supported System Description Tables
+	FACP
+	APIC
+	HPET
+	WAET
+Initializing HPET @ ffff80027ffe216c
+	Checksum is OK
+	Addr: 00000000fed00000
+	hpet: ffff8002bed00000
+	Set HPET @ ffff8002bed00000
+Initializing LAPIC @ ffff80027ffe207c
+	MADT length 240 (base struct 44)
+	LAPIC found: coreid 0, apicid 0 flags 1
+	LAPIC found: coreid 1, apicid 1 flags 1
+	LAPIC found: coreid 2, apicid 2 flags 1
+	LAPIC found: coreid 3, apicid 3 flags 1
+	LAPIC found: coreid 4, apicid 4 flags 1
+	LAPIC found: coreid 5, apicid 5 flags 1
+	LAPIC found: coreid 6, apicid 6 flags 1
+	LAPIC found: coreid 7, apicid 7 flags 1
+	LAPIC found: coreid 8, apicid 8 flags 1
+	LAPIC found: coreid 9, apicid 9 flags 1
+	LAPIC found: coreid 10, apicid 10 flags 1
+	LAPIC found: coreid 11, apicid 11 flags 1
+	LAPIC found: coreid 12, apicid 12 flags 1
+	LAPIC found: coreid 13, apicid 13 flags 1
+	LAPIC found: coreid 14, apicid 14 flags 1
+	LAPIC found: coreid 15, apicid 15 flags 1
+	I/O APIC found: ioapicid 0, addr fec00000, int offset 0
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 4: ignoring
+	APICs processed, 1 cores
+	Checksum is OK
+	lapic: ffff8002bee00000
+	Found ACPI FACP and DSDT
+	FACP and DSDT parsed and will be used for shutdown
+	LAPIC:  processor supports x2APIC, IGNORED.
+	LAPIC: Configuring TSC-Deadline Mode!
+Enabling timer @ ffff8002bed00000 with tick granularity 10000 picoseconds
+Setting up the booter component.
+	Creating 1 1-lvl booter VM pages from [ffff80010016e000,ffff80010016f000) for v_addr [0000000000400000,000000000122aa28).
+	Creating 1 2-lvl booter VM pages from [ffff80010016f000,ffff800100170000) for v_addr [0000000000400000,000000000122aa28).
+	Creating 8 3-lvl booter VM pages from [ffff800100170000,ffff800100178000) for v_addr [0000000000400000,000000000122aa28).
+	Mapping in booter VM (@ [0x0000000000400000, 0x0000000000422330))
+	Mapping in booter VM (@ [0x0000000000423000, 0x00000000010c1000))
+	Mapping in booter VM (@ [0x00000000010c1000, 0x000000000122aec8))
+	Booter elf object: RO - [400000, 422330), RW - [423000, 122aa28)
+	Creating 1 1-lvl untyped memory pages from [ffff800100178000,ffff800100179000) for v_addr [0000008000000000,000000813fe88000).
+	Creating 5 2-lvl untyped memory pages from [ffff800100179000,ffff80010017e000) for v_addr [0000008000000000,000000813fe88000).
+	Creating 2560 3-lvl untyped memory pages from [ffff80010017e000,ffff800100b7e000) for v_addr [0000008000000000,000000813fe88000).
+	Mapping in untyped memory (@ [0x0000008000000000, 0x000000813f482000))
+	Capability table and page-table created.
+	Created boot component structure from page-table and capability-table.
+	Creating initial threads, tcaps, and rcv end-points in boot-component.
+	Boot component initialization complete.
+Upcall into boot component at ip 0x0000000000403ae0 for cpu: 0 with tid: 0
+------------------[ Kernel boot complete ]------------------
+Creating address spaces & components:
+Component sched.pfprr_quantum_static.global.sched: 3 (in an exclusive address space)
+		 elf obj: ro [0x1600000, 0x1624334), data [0x1625000, 0x166d448), bss [0x166d448, 0x17b2828).
+Component capmgr.simple.global.capmgr: 2 (in an exclusive address space)
+		 elf obj: ro [0x1000000, 0x1024db8), data [0x1025000, 0x106d178), bss [0x106d178, 0x1069e228).
+Component no_interface.llbooter.global.booter: 1 (in an exclusive address space)
+Component simple_vmm.vmm.global.vmm: 5 (in an exclusive address space)
+		 elf obj: ro [0x2000000, 0x2809c68), data [0x280a000, 0x2853778), bss [0x2853778, 0x2881080).
+Component pong.pingpong.global.pong: 4 (in an exclusive address space)
+		 elf obj: ro [0x3000000, 0x3017a5c), data [0x3018000, 0x3061558), bss [0x3061558, 0x3062928).
+Capability table delegations (1 capability managers):
+	Capmgr 2:
+		Capability #84: comp for component 5
+		Capability #80: pgtbl for component 5
+		Capability #76: captbl for component 5
+		Capability #72: comp for component 4
+		Capability #68: pgtbl for component 4
+		Capability #64: captbl for component 4
+		Capability #60: comp for component 3
+		Capability #56: pgtbl for component 3
+		Capability #52: captbl for component 3
+Synchronous invocations (148):
+	pong_argsrets (5->4):	client_fn @ 0x27ef1c0, client_ucap @ 0x28526c0, server_fn @ 0x30006b0
+	memmgr_shared_page_map_aligned (5->2):	client_fn @ 0x27edac0, client_ucap @ 0x28525d0, server_fn @ 0x1006c00
+	init_done (5->3):	client_fn @ 0x27ea690, client_ucap @ 0x28522e8, server_fn @ 0x1607050
+	capmgr_vm_comp_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852420, server_fn @ 0x1005e70
+	sched_thd_block_timeout (5->3):	client_fn @ 0x27e8950, client_ucap @ 0x2852240, server_fn @ 0x1606b00
+	capmgr_vm_lapic_access_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852480, server_fn @ 0x1006030
+	capmgr_vm_shared_region_create (5->2):	client_fn @ 0x27eac90, client_ucap @ 0x28524c8, server_fn @ 0x10061c0
+	sched_thd_yield_to (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852168, server_fn @ 0x1606710
+	capmgr_set_tls (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x28523c0, server_fn @ 0x1005cb0
+	capmgr_thd_create_ext (5->2):	client_fn @ 0x27eaf10, client_ucap @ 0x2852348, server_fn @ 0x10059e0
+	contigmem_shared_alloc_aligned (5->2):	client_fn @ 0x27eeaf0, client_ucap @ 0x2852618, server_fn @ 0x1006ea0
+	capmgr_aep_create_thunk (5->2):	client_fn @ 0x27eafb0, client_ucap @ 0x2852378, server_fn @ 0x1005b00
+	memmgr_shared_page_allocn (5->2):	client_fn @ 0x27ed8e0, client_ucap @ 0x2852588, server_fn @ 0x1006a50
+	pong_ids (5->4):	client_fn @ 0x27ef3c0, client_ucap @ 0x2852708, server_fn @ 0x3000860
+	sched_debug_thd_state (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28521b0, server_fn @ 0x1606860
+	pong_call (5->4):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852648, server_fn @ 0x3000460
+	pong_widerets (5->4):	client_fn @ 0x27ef260, client_ucap @ 0x28526d8, server_fn @ 0x3000740
+	memmgr_heap_page_allocn (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852528, server_fn @ 0x1006890
+	contigmem_ro_shared_alloc_aligned (5->2):	client_fn @ 0x27eeb90, client_ucap @ 0x2852630, server_fn @ 0x1006f30
+	sched_thd_block (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28521c8, server_fn @ 0x16068d0
+	pong_subset (5->4):	client_fn @ 0x27ef320, client_ucap @ 0x28526f0, server_fn @ 0x30007d0
+	init_exit (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852300, server_fn @ 0x16070c0
+	capmgr_asnd_rcv_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x28523f0, server_fn @ 0x1005d90
+	pong_arg (5->4):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852678, server_fn @ 0x3000540
+	memmgr_virt_to_phys (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852558, server_fn @ 0x1006970
+	sched_thd_wakeup (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852198, server_fn @ 0x16067f0
+	capmgr_vm_vcpu_create (5->2):	client_fn @ 0x27ead30, client_ucap @ 0x28524f8, server_fn @ 0x10062e0
+	capmgr_vm_msr_bitmap_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852468, server_fn @ 0x1005fc0
+	sched_aep_create_closure (5->3):	client_fn @ 0x27e8a00, client_ucap @ 0x2852270, server_fn @ 0x1606c00
+	memmgr_shared_page_map (5->2):	client_fn @ 0x27ed980, client_ucap @ 0x28525b8, server_fn @ 0x1006b70
+	sched_thd_param_set (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852288, server_fn @ 0x1606c90
+	sched_blkpt_trigger (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852210, server_fn @ 0x1606a20
+	capmgr_thd_create_thunk (5->2):	client_fn @ 0x27eae70, client_ucap @ 0x2852330, server_fn @ 0x1005950
+	pong_wideargs (5->4):	client_fn @ 0x27ef130, client_ucap @ 0x28526a8, server_fn @ 0x3000620
+	sched_thd_exit (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28522a0, server_fn @ 0x1606d00
+	sched_thd_create_closure (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852258, server_fn @ 0x1606b90
+	memmgr_map_phys_to_virt (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852570, server_fn @ 0x10069e0
+	capmgr_vm_vmcs_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852450, server_fn @ 0x1005f50
+	capmgr_initaep_create (5->2):	client_fn @ 0x27eb2c0, client_ucap @ 0x2852360, server_fn @ 0x1005a70
+	capmgr_vm_shared_kernel_page_create_at (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852438, server_fn @ 0x1005ee0
+	memmgr_shared_page_map_aligned_in_vm (5->2):	client_fn @ 0x27edb60, client_ucap @ 0x28525e8, server_fn @ 0x1006c90
+	contigmem_alloc (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852600, server_fn @ 0x1006e30
+	capmgr_vm_lapic_create (5->2):	client_fn @ 0x27eabf0, client_ucap @ 0x28524b0, server_fn @ 0x1006130
+	memmgr_heap_page_allocn_aligned (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852540, server_fn @ 0x1006900
+	sched_blkpt_free (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28521f8, server_fn @ 0x16069b0
+	sched_blkpt_alloc (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28521e0, server_fn @ 0x1606940
+	sched_thd_delete (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28522b8, server_fn @ 0x1606d70
+	sched_thd_yield (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852180, server_fn @ 0x1606780
+	capmgr_initthd_create (5->2):	client_fn @ 0x27eadd0, client_ucap @ 0x2852318, server_fn @ 0x10058c0
+	capmgr_asnd_key_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852408, server_fn @ 0x1005e00
+	pong_ret (5->4):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852660, server_fn @ 0x30004d0
+	capmgr_asnd_create (5->2):	client_fn @ 0x27f0ed0, client_ucap @ 0x28523d8, server_fn @ 0x1005d20
+	capmgr_rcv_create (5->2):	client_fn @ 0x27eaa80, client_ucap @ 0x28523a8, server_fn @ 0x1005c20
+	capmgr_vm_vmcb_create (5->2):	client_fn @ 0x27eb1d0, client_ucap @ 0x28524e0, server_fn @ 0x1006250
+	memmgr_shared_page_allocn_aligned (5->2):	client_fn @ 0x27eda20, client_ucap @ 0x28525a0, server_fn @ 0x1006ae0
+	capmgr_aep_create_ext (5->2):	client_fn @ 0x27eb0b0, client_ucap @ 0x2852390, server_fn @ 0x1005b90
+	capmgr_vm_sinv_install (5->2):	client_fn @ 0x27eb3d0, client_ucap @ 0x2852510, server_fn @ 0x1006370
+	sched_set_tls (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x28522d0, server_fn @ 0x1606de0
+	pong_args (5->4):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852690, server_fn @ 0x30005b0
+	capmgr_shared_kernel_page_create (5->2):	client_fn @ 0x27eab50, client_ucap @ 0x2852498, server_fn @ 0x10060a0
+	sched_blkpt_block (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852228, server_fn @ 0x1606a90
+	sched_get_cpu_freq (5->3):	client_fn @ 0x27f0ed0, client_ucap @ 0x2852150, server_fn @ 0x16066a0
+	sched_thd_create_closure (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x3060184, server_fn @ 0x1606b90
+	capmgr_aep_create_thunk (4->2):	client_fn @ 0x3002ff0, client_ucap @ 0x3060274, server_fn @ 0x1005b00
+	capmgr_asnd_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x30602d4, server_fn @ 0x1005d20
+	sched_set_tls (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30601fc, server_fn @ 0x1606de0
+	memmgr_map_phys_to_virt (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x306046c, server_fn @ 0x10069e0
+	init_done (4->3):	client_fn @ 0x3000990, client_ucap @ 0x306004c, server_fn @ 0x1607050
+	capmgr_initaep_create (4->2):	client_fn @ 0x3003300, client_ucap @ 0x306025c, server_fn @ 0x1005a70
+	sched_thd_delete (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30601e4, server_fn @ 0x1606d70
+	capmgr_vm_vmcs_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x306034c, server_fn @ 0x1005f50
+	capmgr_vm_msr_bitmap_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x3060364, server_fn @ 0x1005fc0
+	capmgr_initthd_create (4->2):	client_fn @ 0x3002e10, client_ucap @ 0x3060214, server_fn @ 0x10058c0
+	memmgr_shared_page_allocn_aligned (4->2):	client_fn @ 0x3005a60, client_ucap @ 0x306049c, server_fn @ 0x1006ae0
+	sched_thd_block_timeout (4->3):	client_fn @ 0x3000d80, client_ucap @ 0x306016c, server_fn @ 0x1606b00
+	sched_thd_yield_to (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x3060094, server_fn @ 0x1606710
+	sched_blkpt_alloc (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x306010c, server_fn @ 0x1606940
+	capmgr_vm_shared_kernel_page_create_at (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x3060334, server_fn @ 0x1005ee0
+	sched_debug_thd_state (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30600dc, server_fn @ 0x1606860
+	sched_thd_yield (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30600ac, server_fn @ 0x1606780
+	memmgr_shared_page_map (4->2):	client_fn @ 0x30059c0, client_ucap @ 0x30604b4, server_fn @ 0x1006b70
+	memmgr_heap_page_allocn_aligned (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x306043c, server_fn @ 0x1006900
+	capmgr_vm_vmcb_create (4->2):	client_fn @ 0x3003210, client_ucap @ 0x30603dc, server_fn @ 0x1006250
+	capmgr_vm_sinv_install (4->2):	client_fn @ 0x3003410, client_ucap @ 0x306040c, server_fn @ 0x1006370
+	sched_thd_block (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30600f4, server_fn @ 0x16068d0
+	capmgr_thd_create_thunk (4->2):	client_fn @ 0x3002eb0, client_ucap @ 0x306022c, server_fn @ 0x1005950
+	capmgr_vm_shared_region_create (4->2):	client_fn @ 0x3002cd0, client_ucap @ 0x30603c4, server_fn @ 0x10061c0
+	capmgr_vm_lapic_create (4->2):	client_fn @ 0x3002c30, client_ucap @ 0x30603ac, server_fn @ 0x1006130
+	sched_thd_exit (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30601cc, server_fn @ 0x1606d00
+	memmgr_shared_page_allocn (4->2):	client_fn @ 0x3005920, client_ucap @ 0x3060484, server_fn @ 0x1006a50
+	capmgr_shared_kernel_page_create (4->2):	client_fn @ 0x3002b90, client_ucap @ 0x3060394, server_fn @ 0x10060a0
+	memmgr_shared_page_map_aligned (4->2):	client_fn @ 0x3005b00, client_ucap @ 0x30604cc, server_fn @ 0x1006c00
+	capmgr_asnd_rcv_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x30602ec, server_fn @ 0x1005d90
+	capmgr_vm_lapic_access_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x306037c, server_fn @ 0x1006030
+	capmgr_vm_vcpu_create (4->2):	client_fn @ 0x3002d70, client_ucap @ 0x30603f4, server_fn @ 0x10062e0
+	sched_blkpt_free (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x3060124, server_fn @ 0x16069b0
+	capmgr_asnd_key_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x3060304, server_fn @ 0x1005e00
+	memmgr_heap_page_allocn (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x3060424, server_fn @ 0x1006890
+	capmgr_vm_comp_create (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x306031c, server_fn @ 0x1005e70
+	sched_blkpt_block (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x3060154, server_fn @ 0x1606a90
+	sched_aep_create_closure (4->3):	client_fn @ 0x3000e30, client_ucap @ 0x306019c, server_fn @ 0x1606c00
+	capmgr_thd_create_ext (4->2):	client_fn @ 0x3002f50, client_ucap @ 0x3060244, server_fn @ 0x10059e0
+	sched_thd_param_set (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30601b4, server_fn @ 0x1606c90
+	memmgr_virt_to_phys (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x3060454, server_fn @ 0x1006970
+	sched_blkpt_trigger (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x306013c, server_fn @ 0x1606a20
+	capmgr_aep_create_ext (4->2):	client_fn @ 0x30030f0, client_ucap @ 0x306028c, server_fn @ 0x1005b90
+	sched_get_cpu_freq (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x306007c, server_fn @ 0x16066a0
+	capmgr_set_tls (4->2):	client_fn @ 0x30074b0, client_ucap @ 0x30602bc, server_fn @ 0x1005cb0
+	memmgr_shared_page_map_aligned_in_vm (4->2):	client_fn @ 0x3005ba0, client_ucap @ 0x30604e4, server_fn @ 0x1006c90
+	sched_thd_wakeup (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x30600c4, server_fn @ 0x16067f0
+	init_exit (4->3):	client_fn @ 0x30074b0, client_ucap @ 0x3060064, server_fn @ 0x16070c0
+	capmgr_rcv_create (4->2):	client_fn @ 0x3002ac0, client_ucap @ 0x30602a4, server_fn @ 0x1005c20
+	capmgr_vm_vmcs_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c234, server_fn @ 0x1005f50
+	capmgr_aep_create_ext (3->2):	client_fn @ 0x1607b50, client_ucap @ 0x166c174, server_fn @ 0x1005b90
+	capmgr_asnd_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c1bc, server_fn @ 0x1005d20
+	memmgr_virt_to_phys (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c33c, server_fn @ 0x1006970
+	capmgr_vm_lapic_access_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c264, server_fn @ 0x1006030
+	capmgr_asnd_key_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c1ec, server_fn @ 0x1005e00
+	capmgr_aep_create_thunk (3->2):	client_fn @ 0x1607a50, client_ucap @ 0x166c15c, server_fn @ 0x1005b00
+	capmgr_initthd_create (3->2):	client_fn @ 0x1607870, client_ucap @ 0x166c0fc, server_fn @ 0x10058c0
+	capmgr_vm_sinv_install (3->2):	client_fn @ 0x1607e70, client_ucap @ 0x166c2f4, server_fn @ 0x1006370
+	capmgr_rcv_create (3->2):	client_fn @ 0x1607520, client_ucap @ 0x166c18c, server_fn @ 0x1005c20
+	memmgr_shared_page_map_aligned (3->2):	client_fn @ 0x160a560, client_ucap @ 0x166c3b4, server_fn @ 0x1006c00
+	capmgr_thd_create_thunk (3->2):	client_fn @ 0x1607910, client_ucap @ 0x166c114, server_fn @ 0x1005950
+	memmgr_heap_page_allocn_aligned (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c324, server_fn @ 0x1006900
+	capmgr_vm_msr_bitmap_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c24c, server_fn @ 0x1005fc0
+	init_done (3->2):	client_fn @ 0x1607130, client_ucap @ 0x166c0cc, server_fn @ 0x10067b0
+	capmgr_vm_vmcb_create (3->2):	client_fn @ 0x1607c70, client_ucap @ 0x166c2c4, server_fn @ 0x1006250
+	capmgr_vm_shared_kernel_page_create_at (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c21c, server_fn @ 0x1005ee0
+	memmgr_shared_page_map_aligned_in_vm (3->2):	client_fn @ 0x160a600, client_ucap @ 0x166c3cc, server_fn @ 0x1006c90
+	memmgr_shared_page_map (3->2):	client_fn @ 0x160a420, client_ucap @ 0x166c39c, server_fn @ 0x1006b70
+	capmgr_thd_create_ext (3->2):	client_fn @ 0x16079b0, client_ucap @ 0x166c12c, server_fn @ 0x10059e0
+	init_exit (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c0e4, server_fn @ 0x1006820
+	capmgr_initaep_create (3->2):	client_fn @ 0x1607d60, client_ucap @ 0x166c144, server_fn @ 0x1005a70
+	memmgr_map_phys_to_virt (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c354, server_fn @ 0x10069e0
+	capmgr_shared_kernel_page_create (3->2):	client_fn @ 0x16075f0, client_ucap @ 0x166c27c, server_fn @ 0x10060a0
+	memmgr_shared_page_allocn (3->2):	client_fn @ 0x160a380, client_ucap @ 0x166c36c, server_fn @ 0x1006a50
+	memmgr_shared_page_allocn_aligned (3->2):	client_fn @ 0x160a4c0, client_ucap @ 0x166c384, server_fn @ 0x1006ae0
+	capmgr_asnd_rcv_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c1d4, server_fn @ 0x1005d90
+	capmgr_vm_comp_create (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c204, server_fn @ 0x1005e70
+	memmgr_heap_page_allocn (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c30c, server_fn @ 0x1006890
+	capmgr_vm_shared_region_create (3->2):	client_fn @ 0x1607730, client_ucap @ 0x166c2ac, server_fn @ 0x10061c0
+	capmgr_vm_lapic_create (3->2):	client_fn @ 0x1607690, client_ucap @ 0x166c294, server_fn @ 0x1006130
+	capmgr_vm_vcpu_create (3->2):	client_fn @ 0x16077d0, client_ucap @ 0x166c2dc, server_fn @ 0x10062e0
+	capmgr_set_tls (3->2):	client_fn @ 0x160c200, client_ucap @ 0x166c1a4, server_fn @ 0x1005cb0
+	addr_get (2->1):	client_fn @ 0x1007f10, client_ucap @ 0x106c108, server_fn @ 0x402e10
+	init_done (2->1):	client_fn @ 0x1007000, client_ucap @ 0x106c0d8, server_fn @ 0x402d30
+	init_exit (2->1):	client_fn @ 0x1007f10, client_ucap @ 0x106c0f0, server_fn @ 0x402da0
+Capability manager memory delegation (1 capmgrs): 2147483648 bytes.
+Kernel resources created, booting components!
+Execution schedule:
+	Created scheduling execution for 2
+Initializing component 2 (executing cos_init).
+Starting the capability manager.
+Components in shared address spaces: none
+Capmgr: processing 9 capabilities for components that have already been booted
+	Creating component simple_vmm.vmm.global.vmm: id 5
+		captbl:76, pgtbl:80, comp:84, captbl/pgtbl frontiers 300 & 2882000, sched 3
+	Creating component pong.pingpong.global.pong: id 4
+		captbl:64, pgtbl:68, comp:72, captbl/pgtbl frontiers 252 & 3063000, sched 3
+	Creating component sched.pfprr_quantum_static.global.sched: id 3
+		captbl:52, pgtbl:56, comp:60, captbl/pgtbl frontiers 184 & 17b3000, sched 2
+Capmgr: 1 components that need execution
+	Created scheduling execution for 3
+Component 2 initialization complete, awaiting main execution.
+Switching to main in component 2.
+Executing main in component 2.
+Initializing component 3 (executing cos_init).
+	Sched 3: 2 components that need execution
+	Sched 3: 4 is the 0th component to initialize
+	Sched 3: 5 is the 1th component to initialize
+Component 3 initialization complete, awaiting main execution.
+Switching to main in component 3.
+Executing main in component 3.
+Starting scheduler loop...
+Scheduler 3: Running initialization thread.
+Pong component 4: cos_init
+Pong component 4: cos_parallel_init on core 0 (of 1)
+	Scheduler 3: initializing component 4 with thread 7.
+vcpuid: only support subleaf 0 for cpu leaf 07h
+created VM with 1 cpus, memory size: 310MB, at host vaddr: 0x2882000
+BIOS image start: 0x27e32b0, end: 0x27e330a, size: 91(0KB)
+Guest Linux image start: 0x20072a0, end: 0x27e32a0, size: 8241153(7MB)
+Guest(vmlinux-5.15) image has been loaded into the VM component
+VMM: Created VM with 1 vCPUs: comp_id=6, 0x2878010
+capmgr: installing sinv cap 284 into VM comp 6 captbl slot 64
+capmgr: installed sinv cap 284 into VM comp 6 captbl at slot 64
+VMM: Installed pong_args at slot 0 (captbl[64])
+VMM: Networking disabled: nicmgr interface not found
+VMM: Initializing vCPU 0 on core 0
+VMM: vCPU 0 initialized (tid=10)
+VMM: vCPU 0 lapic, inst_ctxt, mmio initialized
+	Scheduler 3: initializing component 5 with thread 8.
+Scheduler 3, initialization completed.
+Pong component 4: parallel main
+	Scheduler 3: Exiting thread 7 from component 4
+VMM: Starting vCPU 0 on core 0
+VMM: Core 0 started vCPU 0 (tid=10)
+Linux version 5.15.107+ (esma@esma-systemslab) (gcc (Ubuntu 13.3.0-6ubuntu2~24.04.1) 13.3.0, GNU ld (GNU Binutils for Ubuntu) 2.42) #99 SMP PREEMPT Tue Mar 31 17:25:18 EDT 2026
+Command line: console=uart8250,io,0x3f8,115200n8 spectre_v2=off random.trust_cpu=on acpi_force_table_verification=true acpi.debug_level=ACPI_DEBUG
+x86/fpu: Supporting XSAVE feature 0x001: 'x87 floating point registers'
+x86/fpu: Supporting XSAVE feature 0x002: 'SSE registers'
+x86/fpu: Supporting XSAVE feature 0x004: 'AVX registers'
+x86/fpu: xstate_offset[2]:  576, xstate_sizes[2]:  256
+x86/fpu: Enabled xstate features 0x7, context size is 832 bytes, using 'compacted' format.
+signal: max sigframe size: 1360
+BIOS-provided physical RAM map:
+BIOS-e820: [mem 0x0000000000000000-0x000000000009dfff] usable
+BIOS-e820: [mem 0x000000000009e000-0x00000000000fffff] reserved
+BIOS-e820: [mem 0x0000000000100000-0x0000000003cfffff] usable
+earlycon: uart8250 at I/O port 0x3f8 (options '115200n8')
+printk: bootconsole [uart8250] enabled
+NX (Execute Disable) protection: active
+DMI not present or invalid.
+tsc: Detected 3100.000 MHz processor
+last_pfn = 0x3d00 max_arch_pfn = 0x400000000
+Disabled
+x86/PAT: MTRRs disabled, skipping PAT initialization too.
+x86/PAT: Configuration [0-7]: WB  WT  UC- UC  WB  WT  UC- UC  
+Using GB pages for direct mapping
+ACPI: Early table checksum verification enabled
+ACPI: RSDP 0x00000000000E0000 000014 (v00 QEMU  )
+ACPI: RSDT 0x00000000000E0040 000028 (v00 QEMU            00000000      00000000)
+ACPI: APIC 0x00000000000E0080 000040 (v00 QEMU            00000000      00000000)
+ACPI: Reserving APIC table memory at [mem 0xe0080-0xe00bf]
+Zone ranges:
+  DMA      [mem 0x0000000000001000-0x0000000000ffffff]
+  DMA32    [mem 0x0000000001000000-0x0000000003cfffff]
+  Normal   empty
+Movable zone start for each node
+Early memory node ranges
+  node   0: [mem 0x0000000000001000-0x000000000009dfff]
+  node   0: [mem 0x0000000000100000-0x0000000003cfffff]
+Initmem setup node 0 [mem 0x0000000000001000-0x0000000003cfffff]
+On node 0, zone DMA: 1 pages in unavailable ranges
+On node 0, zone DMA: 98 pages in unavailable ranges
+On node 0, zone DMA32: 17152 pages in unavailable ranges
+IOAPIC[0]: apic_id 3, version 17, address 0xfec00000, GSI 0-47
+ACPI: Using ACPI (MADT) for SMP configuration information
+TSC deadline timer available
+smpboot: Allowing 1 CPUs, 0 hotplug CPUs
+[mem 0x03d00000-0xffffffff] available for PCI devices
+clocksource: refined-jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645519600211568 ns
+setup_percpu: NR_CPUS:64 nr_cpumask_bits:64 nr_cpu_ids:1 nr_node_ids:1
+percpu: Embedded 42 pages/cpu s133648 r8192 d30192 u2097152
+Built 1 zonelists, mobility grouping on.  Total pages: 15116
+Kernel command line: console=uart8250,io,0x3f8,115200n8 spectre_v2=off random.trust_cpu=on acpi_force_table_verification=true acpi.debug_level=ACPI_DEBUG
+Booting kernel: `ACPI_DEBUG' invalid for parameter `acpi.debug_level'
+Unknown kernel command line parameters "spectre_v2=off", will be passed to user space.
+Dentry cache hash table entries: 8192 (order: 4, 65536 bytes, linear)
+Inode-cache hash table entries: 4096 (order: 3, 32768 bytes, linear)
+mem auto-init: stack:off, heap alloc:off, heap free:off
+Memory: 40368K/62068K available (8193K kernel code, 904K rwdata, 1668K rodata, 4560K init, 600K bss, 21444K reserved, 0K cma-reserved)
+SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=1, Nodes=1
+rcu: Preemptible hierarchical RCU implementation.
+rcu: 	RCU restricting CPUs from NR_CPUS=64 to nr_cpu_ids=1.
+	Trampoline variant of Tasks RCU enabled.
+rcu: RCU calculated value of scheduler-enlistment delay is 25 jiffies.
+rcu: Adjusting geometry for rcu_fanout_leaf=16, nr_cpu_ids=1
+NR_IRQS: 4352, nr_irqs: 72, preallocated irqs: 16
+NMI enabled
+NMI enabled
+NMI enabled
+NMI enabled
+NMI enabled
+NMI enabled
+NMI enabled
+NMI enabled
+random: crng init done
+Console: colour dummy device 80x25
+printk: console [ttyS0] enabled
+printk: console [ttyS0] enabled
+printk: bootconsole [uart8250] disabled
+printk: bootconsole [uart8250] disabled
+ACPI: Core revision 20210730
+APIC: Switch to symmetric I/O mode setup
+vlapic DFR in Flat Model
+vlapic is software-enabled
+unsupported ICR command, ignore it
+clocksource: tsc-early: mask: 0xffffffffffffffff max_cycles: 0x2caf47d9d39, max_idle_ns: 440795292816 ns
+Calibrating delay loop (skipped), value calculated using timer frequency.. 6200.00 BogoMIPS (lpj=12400000)
+pid_max: default: 32768 minimum: 301
+Mount-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
+Mountpoint-cache hash table entries: 512 (order: 0, 4096 bytes, linear)
+Last level iTLB entries: 4KB 0, 2MB 0, 4MB 0
+Last level dTLB entries: 4KB 0, 2MB 0, 4MB 0, 1GB 0
+Spectre V1 : Mitigation: usercopy/swapgs barriers and __user pointer sanitization
+Spectre V2 : off selected on command line.
+Spectre V2 : User space: Vulnerable
+Speculative Store Bypass: Mitigation: Speculative Store Bypass disabled via prctl
+Freeing SMP alternatives memory: 20K
+ACPI Warning: AcpiEnable failed (20210730/utxfinit-135)
+ACPI: Unable to enable ACPI
+smpboot: CPU0: 13th Gen Intel(R) Core(TM) i5-1335U (family: 0x6, model: 0xba, stepping: 0x3)
+Performance Events: unsupported p6 CPU model 186 no PMU driver, software events only.
+rcu: Hierarchical SRCU implementation.
+smp: Bringing up secondary CPUs ...
+smp: Brought up 1 node, 1 CPU
+smpboot: Max logical packages: 1
+smpboot: Total of 1 processors activated (6200.00 BogoMIPS)
+clocksource: jiffies: mask: 0xffffffff max_cycles: 0xffffffff, max_idle_ns: 7645041785100000 ns
+futex hash table entries: 256 (order: 2, 16384 bytes, linear)
+NET: Registered PF_NETLINK/PF_ROUTE protocol family
+thermal_sys: Registered thermal governor 'step_wise'
+thermal_sys: Registered thermal governor 'user_space'
+cpuidle: using governor ladder
+PCI: Using configuration type 1 for base access
+kprobes: kprobe jump-optimization is enabled. All kprobes are optimized if possible.
+ACPI: Interpreter disabled.
+vgaarb: loaded
+PCI: Probing PCI hardware
+PCI host bridge to bus 0000:00
+pci_bus 0000:00: root bus resource [io  0x0000-0xffff]
+pci_bus 0000:00: root bus resource [mem 0x00000000-0x7fffffffff]
+pci_bus 0000:00: No busn resource found for root bus, will use [bus 00-ff]
+pci 0000:00:00.0: [8086:29c0] type 01 class 0x060000
+pci 0000:00:01.0: [1af4:1000] type 00 class 0x020000
+pci 0000:00:01.0: reg 0x10: [io  0x4000-0x7fff]
+pci 0000:00:00.0: bridge configuration invalid ([bus 00-00]), reconfiguring
+pci_bus 0000:01: extended config space not accessible
+pci 0000:00:00.0: PCI bridge to [bus 01-ff]
+pci 0000:00:00.0:   bridge window [io  0x0000-0x0fff]
+pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff]
+pci 0000:00:00.0:   bridge window [mem 0x00000000-0x000fffff pref]
+pci_bus 0000:01: busn_res: [bus 01-ff] end is updated to 01
+pci_bus 0000:00: busn_res: [bus 00-ff] end is updated to 01
+clocksource: Switched to clocksource tsc-early
+pnp: PnP ACPI: disabled
+NET: Registered PF_INET protocol family
+IP idents hash table entries: 2048 (order: 2, 16384 bytes, linear)
+tcp_listen_portaddr_hash hash table entries: 256 (order: 0, 4096 bytes, linear)
+Table-perturb hash table entries: 65536 (order: 6, 262144 bytes, linear)
+TCP established hash table entries: 512 (order: 0, 4096 bytes, linear)
+TCP bind hash table entries: 512 (order: 1, 8192 bytes, linear)
+TCP: Hash tables configured (established 512 bind 512)
+MPTCP token hash table entries: 256 (order: 0, 6144 bytes, linear)
+UDP hash table entries: 256 (order: 1, 8192 bytes, linear)
+UDP-Lite hash table entries: 256 (order: 1, 8192 bytes, linear)
+NET: Registered PF_UNIX/PF_LOCAL protocol family
+pci 0000:00:00.0: PCI bridge to [bus 01]
+pci_bus 0000:00: resource 4 [io  0x0000-0xffff]
+pci_bus 0000:00: resource 5 [mem 0x00000000-0x7fffffffff]
+PCI: CLS 0 bytes, default 64
+platform rtc_cmos: registered platform RTC device (no PNP device found)
+workingset: timestamp_bits=62 max_order=14 bucket_order=0
+virtio-pci 0000:00:01.0: enabling device (0000 -> 0001)
+virtio-pci 0000:00:01.0: virtio_pci: leaving for legacy driver
+Serial: 8250/16550 driver, 4 ports, IRQ sharing disabled
+serial8250: ttyS0 at I/O 0x3f8 (irq = 4, base_baud = 115200) is a 16450
+serial8250: ttyS1 at I/O 0x2f8 (irq = 3, base_baud = 115200) is a 16450
+serial8250: ttyS2 at I/O 0x3e8 (irq = 4, base_baud = 115200) is a 16450
+tun: Universal TUN/TAP device driver, 1.6
+vpic wire mode -> IOAPIC
+e1000: Intel(R) PRO/1000 Network Driver
+e1000: Copyright (c) 1999-2006 Intel Corporation.
+e1000e: Intel(R) PRO/1000 Network Driver
+e1000e: Copyright(c) 1999 - 2015 Intel Corporation.
+igb: Intel(R) Gigabit Ethernet Network Driver
+igb: Copyright (c) 2007-2014 Intel Corporation.
+igbvf: Intel(R) Gigabit Virtual Function Network Driver
+igbvf: Copyright (c) 2009 - 2012 Intel Corporation.
+ixgbe: Intel(R) 10 Gigabit PCI Express Network Driver
+ixgbe: Copyright (c) 1999-2016 Intel Corporation.
+intel_pstate: CPU model not supported
+NET: Registered PF_LLC protocol family
+ipip: IPv4 and MPLS over IPv4 tunneling driver
+IPv4 over IPsec tunneling driver
+Initializing XFRM netlink socket
+NET: Registered PF_PACKET protocol family
+NET: Registered PF_KEY protocol family
+NET4: DECnet for Linux: V.2.5.68s (C) 1995-2003 Linux DECnet Project Team
+DECnet: Routing cache hash table of 256 buckets, 4Kbytes
+NET: Registered PF_DECnet protocol family
+8021q: 802.1Q VLAN Support v1.8
+DCCP: Activated CCID 2 (TCP-like)
+DCCP: Activated CCID 3 (TCP-Friendly Rate Control)
+NET: Registered PF_RDS protocol family
+NET: Registered PF_VSOCK protocol family
+mpls_gso: MPLS GSO support
+IPI shorthand broadcast: enabled
+sched_clock: Marking stable (1583009142, 170712686)->(2274191558, -520469730)
+printk: console [netcon0] enabled
+netconsole: network logging started
+Freeing unused kernel image (initmem) memory: 4560K
+Write protecting the kernel read-only data: 12288k
+Freeing unused kernel image (text/rodata gap) memory: 2044K
+Freeing unused kernel image (rodata/data gap) memory: 380K
+Run /init as init process
+This is a placeholder initrd script.
+Replace this with your actual initrd initialization code.
+devtmpfs not available, device nodes created manually
+clocksource: tsc: mask: 0xffffffffffffffff max_cycles: 0x2caf47d9d39, max_idle_ns: 440795292816 ns
+clocksource: Switched to clocksource tsc
+Running programs...
+
+╔═══════════════════════════════════════════════════════════╗
+║         VM IPC Test - vmcall → Pong Component            ║
+╚═══════════════════════════════════════════════════════════╝
+
+Test 1: pong_args(p1,p2,p3,p4) - should return sum
+  vmcall(fn=0, 10, 20, 30, 40) → ret0=100
+  ✓ pong_args(10,20,30,40): PASS (expected=100, actual=100)
+  vmcall(fn=0, 1, 2, 3, 4) → ret0=10
+  ✓ pong_args(1,2,3,4): PASS (expected=10, actual=10)
+  vmcall(fn=0, 42, 100, 0, 0) → ret0=142
+  ✓ pong_args(42,100,0,0): PASS (expected=142, actual=142)
+  vmcall(fn=0, 0, 0, 0, 0) → ret0=0
+  ✓ pong_args(0,0,0,0): PASS (expected=0, actual=0)
+
+╔═══════════════════════════════════════════════════════════╗
+║                      Test Summary                         ║
+╠═══════════════════════════════════════════════════════════╣
+║  Passed: 4                                                ║
+║  Failed: 0                                                ║
+║  Total:  4                                                ║
+╠═══════════════════════════════════════════════════════════╣
+║  Result: ✓ ALL TESTS PASSED                              ║
+╚═══════════════════════════════════════════════════════════╝
+
+[vm_ipc_test] DONE
+
+
+╔═══════════════════════════════════════════════════════════╗
+║      VM IPC Performance Benchmark - vmcall Latency       ║
+╚═══════════════════════════════════════════════════════════╝
+
+Number of iterations per benchmark: 100000
+Pinning to CPU 0 and locking memory for stable measurements...
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Benchmark 1: vmcall Slot 0 - pong_args(10,20,30,40)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Running 100000 iterations...
+
+=== Detailed Statistics: vmcall Slot 0: pong_args(10,20,30,40) ===
+Sample count:   100000
+Min:            83728
+Max:            7913305
+Mean:           171664.92
+Median (50%):   178472.00
+Std Dev:        70587.65
+Variance:       4982616696.93
+
+Percentiles:
+  1st:          84098.00
+  5th:          84923.00
+  25th:         175012.00
+  50th:         178472.00
+  75th:         182756.00
+  95th:         218125.05
+  99th:         251254.48
+====================================
+
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Benchmark 2: vmcall Slot 1 - pong_argsrets(42,100,5,7)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Running 100000 iterations...
+
+=== Detailed Statistics: vmcall Slot 1: pong_argsrets(42,100,5,7) ===
+Sample count:   100000
+Min:            128
+Max:            28114
+Mean:           169.34
+Median (50%):   146.00
+Std Dev:        255.10
+Variance:       65076.98
+
+Percentiles:
+  1st:          132.00
+  5th:          134.00
+  25th:         142.00
+  50th:         146.00
+  75th:         152.00
+  95th:         185.00
+  99th:         636.00
+====================================
+
+
+╔═══════════════════════════════════════════════════════════╗
+║                   Benchmark Complete                      ║
+╚═══════════════════════════════════════════════════════════╝
+
+[vm_ipc_perf] Comparison:
+  Slot 0 median: 178472.00 cycles
+  Slot 1 median: 146.00 cycles
+  Difference:    -178326.00 cycles (-99.92%)
+
+[vm_ipc_perf] DONE
+
+Programs complete. System will halt.
+QEMU: Terminated
+

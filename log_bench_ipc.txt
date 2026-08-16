@@ -1,0 +1,844 @@
+3h
+                    
+
+3h
+                    
+
+3hKEY MAPPING FOR CONSOLE REDIRECTION:
+
+Use the <ESC><1> key sequence for <F1>
+Use the <ESC><2> key sequence for <F2>
+Use the <ESC><3> key sequence for <F3>
+Use the <ESC><0> key sequence for <F10>
+Use the <ESC><!> key sequence for <F11>
+Use the <ESC><@> key sequence for <F12>
+
+Use the <ESC><Ctrl><M> key sequence for <Ctrl><M>
+Use the <ESC><Ctrl><H> key sequence for <Ctrl><H>
+Use the <ESC><Ctrl><I> key sequence for <Ctrl><I>
+Use the <ESC><Ctrl><J> key sequence for <Ctrl><J>
+
+Use the <ESC><X><X> key sequence for <Alt><x>, where x is any letter
+key, and X is the upper case of that key
+
+Use the <ESC><R><ESC><r><ESC><R> key sequence for <Ctrl><Alt><Del>
+
+Press the spacebar to pause...
+Initializing PCIe, USB, and Video... Done
+6;7l	Press the spacebar to pause...
+
+	KEY MAPPING FOR CONSOLE REDIRECTION:
+
+	Use the <ESC><1> key sequence for <F1>
+	Use the <ESC><2> key sequence for <F2>
+	Use the <ESC><3> key sequence for <F3>
+	Use the <ESC><0> key sequence for <F10>
+	Use the <ESC><!> key sequence for <F11>
+	Use the <ESC><@> key sequence for <F12>
+
+	Use the <ESC><Ctrl><M> key sequence for <Ctrl><M>
+	Use the <ESC><Ctrl><H> key sequence for <Ctrl><H>
+	Use the <ESC><Ctrl><I> key sequence for <Ctrl><I>
+	Use the <ESC><Ctrl><J> key sequence for <Ctrl><J>
+
+	Use the <ESC><X><X> key sequence for <Alt><x>, where x is any letter
+	key, and X is the upper case of that key
+
+	Use the <ESC><R><ESC><r><ESC><R> key sequence for <Ctrl><Alt><Del>
+
+F2=SystemSetupF10=LifecycleControllerF11=BootManagerF12=PXEBootIPMI: Boot to Virtual CD Boot Requested by iDRACInitializingSerialATAdevices...
+
+
+
+
+
+BroadcomNetXtremeEthernetBootAgentCopyright(C)2000-2022BroadcomLimitedAllrightsreserved.PressCtrl-StoenterConfigurationMenu
+
+
+
+PowerEdgeExpandableRAIDControllerBIOSCopyright(c)2016AvagoTechnologiesPress<Ctrl><R>toRunConfigurationUtility
+
+HA-0(Bus24Dev0)PERCH330AdapterFWpackage:25.5.9.0001
+
+
+
+
+
+
+2Non-RAIDDisk(s)foundonthehostadapter2Non-RAIDDisk(s)handledbyBIOS0VirtualDrive(s)foundonthehostadapter.
+0VirtualDrive(s)handledbyBIOS
+
+
+
+
+
+
+BroadcomNetXtreme(NXE)EthernetBootAgentCopyright(C)2000-2022BroadcomLimitedAllrightsreserved.PressCtrl-StoenterConfigurationMenu3h3h3h
+                    
+
+PowerEdge R740
+BIOS Version: 2.16.1
+Virtual CD Boot Requested by iDRAC
+
+F2	 = System Setup
+F10	 = Lifecycle Controller (Config
+	   iDRAC, Update FW, Install OS)
+F11	 = Boot Manager
+F12	 = PXE Boot
+iDRAC IPV4:  161.253.78.151
+iDRAC IPV6:  2606:69C0:50B0:1322:6DAD:6D42:9895:BC9C
+Initializing Firmware Interfaces...
+ 
+
+
+
+
+
+Enumerating Boot options...
+Enumerating Boot options... Done
+Booting...
+6;7l
+
+BootingfromVirtualCD/DVDInitial component found:
+kenrel mem layout:
+	- [ffff800014f18000, ffff80001548f018, ffff800015490000)
+Memory regions:
+	- 0 (Available): [00000000, 0009c000) sz = 0MB + 624KB
+	- 0 (Reserved ): [0009c000, 000a0000) sz = 0MB + 16KB
+	- 1 (Reserved ): [000e0000, 00100000) sz = 0MB + 128KB
+	- 2 (Available): [00100000, 47db5000) sz = 1148MB + 724KB
+	  memory usable at boot time: 32925fe8 (809 MB + 151 KB) [ffff800015490000, ffff800047db5000)
+	- 3 (Reserved ): [47db5000, 48029000) sz = 2MB + 464KB
+	- 4 (Available): [48029000, 4844a000) sz = 4MB + 132KB
+	- 5 (Reserved ): [4844a000, 485e7000) sz = 1MB + 628KB
+	- 6 (Available): [485e7000, 48a48000) sz = 4MB + 388KB
+	- 7 (Reserved ): [48a48000, 50a50000) sz = 128MB + 32KB
+	- 8 (Available): [50a50000, 68bff000) sz = 385MB + 700KB
+	- 9 (Reserved ): [68bff000, 6ebff000) sz = 96MB + 0KB
+	- 10 (Reserved ): [6ebff000, 6f9ff000) sz = 14MB + 0KB
+	- 11 (Reserved ): [6f9ff000, 6ffff000) sz = 6MB + 0KB
+	- 12 (Available): [6ffff000, 70000000) sz = 0MB + 4KB
+	- 13 (Reserved ): [70000000, 90000000) sz = 512MB + 0KB
+	- 14 (Reserved ): [fd000000, fe800000) sz = 24MB + 0KB
+	- 15 (Reserved ): [fec00000, fec01000) sz = 0MB + 4KB
+	- 16 (Reserved ): [fec80000, fed01000) sz = 0MB + 516KB
+	- 17 (Reserved ): [fed40000, fed45000) sz = 0MB + 20KB
+	- 18 (Reserved ): [ff000000, 100000000) sz = 16MB + 0KB
+	- 19 (Available): [100000000, 2080000000) sz = 129024MB + 0KB
+	  memory usable at boot time: 7f7c00000 (32636 MB + 0 KB) [ffff800100000000, ffff8008f7c00000)
+	Amount of wasted memory due to layout is 0 MB + 0x0 B
+Processor information:
+	Vendor: GenuineIntel
+	Brand string Intel(R) Xeon(R) Platinum 8160 CPU @ 2.10GHz
+	Features [rdtsc fpu superpages sysenter/exit clflush acpi apic x2apic tsc-deadline rdtscp invariant_tsc ]
+	CPUID base frequency: 2100 (* 1Mhz)
+	CPUID max  frequency: 3700 (* 1Mhz)
+	MSR Frequency: 21 (* 100Mhz)
+Initializing virtual memory
+	Setting up initial page directory.
+The CPU supports SSE3, SSE4, AVX, AVX2 and XSAVE
+The CPU supports XSAVEOPT, XSAVEC and XSAVES instructions
+The CPU maximum XSAVE area is: 2696
+The AVX area offset is: 576
+ACPI initialization
+	Found good RSDP @ ffff8000000fe320
+	RDST paddr is @ 000000006fc110c4
+	RSDP lenth is :36
+	XSDT paddr is @ 000000006fc11188
+	RSDT vaddr is @ ffff80092fc110c4
+Supported System Description Tables
+	FACP
+	SSDT
+	TPM2
+	SSDT
+	MCEJ
+	WD__
+	SLIC
+	HPET
+	APIC
+	MCFG
+	MIGT
+	MSCT
+	PCAT
+	PCCT
+	RASF
+	SLIT
+	SRAT
+	SVOS
+	WSMT
+	OEM4
+	SSDT
+	SSDT
+	SSDT
+	SPCR
+	DMAR
+	HEST
+	BERT
+	ERST
+	EINJ
+Initializing HPET @ ffff80092fff5000
+	Checksum is OK
+	Addr: 00000000fed00000
+	hpet: ffff80097ed00000
+	Set HPET @ ffff80097ed00000
+Initializing LAPIC @ ffff80092fff3000
+	MADT length 5854 (base struct 44)
+	LAPIC found: coreid 0, apicid 0 flags 1
+	LAPIC found: coreid 64, apicid 64 flags 1
+	LAPIC found: coreid 1, apicid 10 flags 1
+	LAPIC found: coreid 65, apicid 74 flags 1
+	LAPIC found: coreid 2, apicid 2 flags 1
+	LAPIC found: coreid 66, apicid 66 flags 1
+	LAPIC found: coreid 3, apicid 8 flags 1
+	LAPIC found: coreid 67, apicid 72 flags 1
+	LAPIC found: coreid 4, apicid 4 flags 1
+	LAPIC found: coreid 68, apicid 68 flags 1
+	LAPIC found: coreid 5, apicid 6 flags 1
+	LAPIC found: coreid 69, apicid 70 flags 1
+	LAPIC found: coreid 6, apicid 16 flags 1
+	LAPIC found: coreid 70, apicid 80 flags 1
+	LAPIC found: coreid 7, apicid 26 flags 1
+	LAPIC found: coreid 71, apicid 90 flags 1
+	LAPIC found: coreid 8, apicid 18 flags 1
+	LAPIC found: coreid 72, apicid 82 flags 1
+	LAPIC found: coreid 9, apicid 24 flags 1
+	LAPIC found: coreid 73, apicid 88 flags 1
+	LAPIC found: coreid 10, apicid 20 flags 1
+	LAPIC found: coreid 74, apicid 84 flags 1
+	LAPIC found: coreid 11, apicid 22 flags 1
+	LAPIC found: coreid 75, apicid 86 flags 1
+	LAPIC found: coreid 12, apicid 32 flags 1
+	LAPIC found: coreid 76, apicid 96 flags 1
+	LAPIC found: coreid 13, apicid 42 flags 1
+	LAPIC found: coreid 77, apicid 106 flags 1
+	LAPIC found: coreid 14, apicid 34 flags 1
+	LAPIC found: coreid 78, apicid 98 flags 1
+	LAPIC found: coreid 15, apicid 40 flags 1
+	LAPIC found: coreid 79, apicid 104 flags 1
+	LAPIC found: coreid 16, apicid 36 flags 1
+	LAPIC found: coreid 80, apicid 100 flags 1
+	LAPIC found: coreid 17, apicid 38 flags 1
+	LAPIC found: coreid 81, apicid 102 flags 1
+	LAPIC found: coreid 18, apicid 48 flags 1
+	LAPIC found: coreid 82, apicid 112 flags 1
+	LAPIC found: coreid 19, apicid 58 flags 1
+	LAPIC found: coreid 83, apicid 122 flags 1
+	LAPIC found: coreid 20, apicid 50 flags 1
+	LAPIC found: coreid 84, apicid 114 flags 1
+	LAPIC found: coreid 21, apicid 56 flags 1
+	LAPIC found: coreid 85, apicid 120 flags 1
+	LAPIC found: coreid 22, apicid 52 flags 1
+	LAPIC found: coreid 86, apicid 116 flags 1
+	LAPIC found: coreid 23, apicid 54 flags 1
+	LAPIC found: coreid 87, apicid 118 flags 1
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	LAPIC found: coreid 255, apicid 255 flags 0
+	I/O APIC found: ioapicid 8, addr fec00000, int offset 0
+	I/O APIC found: ioapicid 9, addr fec01000, int offset 24
+	I/O APIC found: ioapicid 10, addr fec08000, int offset 32
+	I/O APIC found: ioapicid 11, addr fec10000, int offset 40
+	I/O APIC found: ioapicid 12, addr fec18000, int offset 48
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	I/O APIC found: ioapicid 15, addr fec20000, int offset 72
+	I/O APIC found: ioapicid 16, addr fec28000, int offset 80
+	I/O APIC found: ioapicid 17, addr fec30000, int offset 88
+	I/O APIC found: ioapicid 18, addr fec38000, int offset 96
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 128: ignoring
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 2: ignoring
+	Interrupt controller type 4: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 9: ignoring
+	Interrupt controller type 10: ignoring
+	APICs processed, 1 cores
+	Checksum is OK
+	lapic: ffff80097ee00000
+	Found ACPI FACP and DSDT
+	FACP and DSDT parsed and will be used for shutdown
+	LAPIC:  processor supports x2APIC, IGNORED.
+	LAPIC: Configuring TSC-Deadline Mode!
+Enabling timer @ ffff80097ed00000 with tick granularity 41666 picoseconds
+Setting up the booter component.
+	Creating 1 1-lvl booter VM pages from [ffff80010016e000,ffff80010016f000) for v_addr [0000000000400000,0000000000a3ca28).
+	Creating 1 2-lvl booter VM pages from [ffff80010016f000,ffff800100170000) for v_addr [0000000000400000,0000000000a3ca28).
+	Creating 4 3-lvl booter VM pages from [ffff800100170000,ffff800100174000) for v_addr [0000000000400000,0000000000a3ca28).
+	Mapping in booter VM (@ [0x0000000000400000, 0x0000000000421ad0))
+	Mapping in booter VM (@ [0x0000000000422000, 0x00000000008d3000))
+	Mapping in booter VM (@ [0x00000000008d3000, 0x0000000000a3cee8))
+	Booter elf object: RO - [400000, 421ad0), RW - [422000, a3ca28)
+	Creating 1 1-lvl untyped memory pages from [ffff800100174000,ffff800100175000) for v_addr [0000008000000000,00000087f7a8c000).
+	Creating 32 2-lvl untyped memory pages from [ffff800100175000,ffff800100195000) for v_addr [0000008000000000,00000087f7a8c000).
+	Creating 16318 3-lvl untyped memory pages from [ffff800100195000,ffff800104153000) for v_addr [0000008000000000,00000087f7a8c000).
+	Mapping in untyped memory (@ [0x0000008000000000, 0x00000087f3aad000))
+	Capability table and page-table created.
+	Created boot component structure from page-table and capability-table.
+	Creating initial threads, tcaps, and rcv end-points in boot-component.
+	Boot component initialization complete.
+Upcall into boot component at ip 0x0000000000403ae0 for cpu: 0 with tid: 0
+------------------[ Kernel boot complete ]------------------
+Creating address spaces & components:
+Component capmgr.simple.global.capmgr: 2 (in an exclusive address space)
+		 elf obj: ro [0x400000, 0x424bf0), data [0x425000, 0x46d198), bss [0x46d198, 0xfa9e2a8).
+Component tests.unit_pingpong.global.ping: 6 (in an exclusive address space)
+		 elf obj: ro [0x1600000, 0x16133b4), data [0x1614000, 0x165d1c8), bss [0x165d1c8, 0x1660628).
+Component no_interface.llbooter.global.booter: 1 (in an exclusive address space)
+Component sched.pfprr_quantum_static.global.sched: 3 (in an exclusive address space)
+		 elf obj: ro [0x400000, 0x4241ac), data [0x425000, 0x46d448), bss [0x46d448, 0x5b2828).
+Component pong.pingpong.global.pong: 4 (in an exclusive address space)
+		 elf obj: ro [0x400000, 0x411ad4), data [0x412000, 0x45b0f8), bss [0x45b0f8, 0x45c4a8).
+Component tests.unit_schedcomp.global.schedtest: 5 (in an exclusive address space)
+		 elf obj: ro [0x400000, 0x413790), data [0x414000, 0x45d288), bss [0x45d288, 0x45e668).
+Capability table delegations (1 capability managers):
+	Capmgr 2:
+		Capability #96: comp for component 6
+		Capability #92: pgtbl for component 6
+		Capability #88: captbl for component 6
+		Capability #84: comp for component 5
+		Capability #80: pgtbl for component 5
+		Capability #76: captbl for component 5
+		Capability #72: comp for component 4
+		Capability #68: pgtbl for component 4
+		Capability #64: captbl for component 4
+		Capability #60: comp for component 3
+		Capability #56: pgtbl for component 3
+		Capability #52: captbl for component 3
+Synchronous invocations (71):
+	pong_widerets (6->4):	client_fn @ 0x1600f90, client_ucap @ 0x165c0dc, server_fn @ 0x400740
+	pong_argsrets (6->4):	client_fn @ 0x1600ef0, client_ucap @ 0x165c0c4, server_fn @ 0x4006b0
+	pong_call (6->4):	client_fn @ 0x1602fa0, client_ucap @ 0x165c04c, server_fn @ 0x400460
+	pong_arg (6->4):	client_fn @ 0x1602fa0, client_ucap @ 0x165c07c, server_fn @ 0x400540
+	capmgr_create_noop (6->2):	client_fn @ 0x1602fa0, client_ucap @ 0x165c154, server_fn @ 0x406dc0
+	pong_args (6->4):	client_fn @ 0x1602fa0, client_ucap @ 0x165c094, server_fn @ 0x4005b0
+	pong_wideargs (6->4):	client_fn @ 0x1600e60, client_ucap @ 0x165c0ac, server_fn @ 0x400620
+	pong_subset (6->4):	client_fn @ 0x1601050, client_ucap @ 0x165c0f4, server_fn @ 0x4007d0
+	pong_ret (6->4):	client_fn @ 0x1602fa0, client_ucap @ 0x165c064, server_fn @ 0x4004d0
+	pong_ids (6->4):	client_fn @ 0x16010f0, client_ucap @ 0x165c10c, server_fn @ 0x400860
+	init_done (6->3):	client_fn @ 0x1602090, client_ucap @ 0x165c124, server_fn @ 0x406ef0
+	init_exit (6->3):	client_fn @ 0x1602fa0, client_ucap @ 0x165c13c, server_fn @ 0x406f60
+	sched_aep_create_closure (5->3):	client_fn @ 0x400a10, client_ucap @ 0x45c19c, server_fn @ 0x406c00
+	sched_blkpt_alloc (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c10c, server_fn @ 0x406940
+	sched_debug_thd_state (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c0dc, server_fn @ 0x406860
+	sched_blkpt_trigger (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c13c, server_fn @ 0x406a20
+	sched_thd_block_timeout (5->3):	client_fn @ 0x400960, client_ucap @ 0x45c16c, server_fn @ 0x406b00
+	init_done (5->3):	client_fn @ 0x400570, client_ucap @ 0x45c04c, server_fn @ 0x406ef0
+	sched_thd_wakeup (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c0c4, server_fn @ 0x4067f0
+	sched_blkpt_free (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c124, server_fn @ 0x4069b0
+	sched_set_tls (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c1fc, server_fn @ 0x406de0
+	sched_thd_yield_to (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c094, server_fn @ 0x406710
+	sched_blkpt_block (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c154, server_fn @ 0x406a90
+	capmgr_create_noop (5->2):	client_fn @ 0x4033b0, client_ucap @ 0x45c214, server_fn @ 0x406dc0
+	init_exit (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c064, server_fn @ 0x406f60
+	sched_thd_exit (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c1cc, server_fn @ 0x406d00
+	sched_thd_create_closure (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c184, server_fn @ 0x406b90
+	sched_thd_param_set (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c1b4, server_fn @ 0x406c90
+	sched_thd_yield (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c0ac, server_fn @ 0x406780
+	sched_thd_block (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c0f4, server_fn @ 0x4068d0
+	sched_get_cpu_freq (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c07c, server_fn @ 0x4066a0
+	sched_thd_delete (5->3):	client_fn @ 0x4033b0, client_ucap @ 0x45c1e4, server_fn @ 0x406d70
+	init_exit (4->3):	client_fn @ 0x4018a0, client_ucap @ 0x45a064, server_fn @ 0x406f60
+	init_done (4->3):	client_fn @ 0x400990, client_ucap @ 0x45a04c, server_fn @ 0x406ef0
+	capmgr_create_noop (4->2):	client_fn @ 0x4018a0, client_ucap @ 0x45a07c, server_fn @ 0x406dc0
+	capmgr_asnd_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c1bc, server_fn @ 0x405d20
+	capmgr_initthd_create (3->2):	client_fn @ 0x407710, client_ucap @ 0x46c0fc, server_fn @ 0x4058c0
+	capmgr_vm_comp_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c204, server_fn @ 0x405e70
+	memmgr_heap_page_allocn (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c30c, server_fn @ 0x406890
+	memmgr_virt_to_phys (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c33c, server_fn @ 0x406970
+	memmgr_map_phys_to_virt (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c354, server_fn @ 0x4069e0
+	capmgr_vm_shared_region_create (3->2):	client_fn @ 0x4075d0, client_ucap @ 0x46c2ac, server_fn @ 0x4061c0
+	capmgr_asnd_rcv_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c1d4, server_fn @ 0x405d90
+	capmgr_vm_lapic_create (3->2):	client_fn @ 0x407530, client_ucap @ 0x46c294, server_fn @ 0x406130
+	capmgr_vm_sinv_install (3->2):	client_fn @ 0x407d10, client_ucap @ 0x46c2f4, server_fn @ 0x406370
+	capmgr_asnd_key_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c1ec, server_fn @ 0x405e00
+	capmgr_set_tls (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c1a4, server_fn @ 0x405cb0
+	memmgr_heap_page_allocn_aligned (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c324, server_fn @ 0x406900
+	capmgr_vm_vmcb_create (3->2):	client_fn @ 0x407b10, client_ucap @ 0x46c2c4, server_fn @ 0x406250
+	memmgr_shared_page_map_aligned (3->2):	client_fn @ 0x40a400, client_ucap @ 0x46c3b4, server_fn @ 0x406c00
+	capmgr_initaep_create (3->2):	client_fn @ 0x407c00, client_ucap @ 0x46c144, server_fn @ 0x405a70
+	capmgr_aep_create_ext (3->2):	client_fn @ 0x4079f0, client_ucap @ 0x46c174, server_fn @ 0x405b90
+	capmgr_thd_create_ext (3->2):	client_fn @ 0x407850, client_ucap @ 0x46c12c, server_fn @ 0x4059e0
+	memmgr_shared_page_allocn_aligned (3->2):	client_fn @ 0x40a360, client_ucap @ 0x46c384, server_fn @ 0x406ae0
+	capmgr_rcv_create (3->2):	client_fn @ 0x4073c0, client_ucap @ 0x46c18c, server_fn @ 0x405c20
+	memmgr_shared_page_map (3->2):	client_fn @ 0x40a2c0, client_ucap @ 0x46c39c, server_fn @ 0x406b70
+	init_done (3->2):	client_fn @ 0x406fd0, client_ucap @ 0x46c0cc, server_fn @ 0x4067b0
+	capmgr_vm_vcpu_create (3->2):	client_fn @ 0x407670, client_ucap @ 0x46c2dc, server_fn @ 0x4062e0
+	capmgr_vm_shared_kernel_page_create_at (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c21c, server_fn @ 0x405ee0
+	memmgr_shared_page_map_aligned_in_vm (3->2):	client_fn @ 0x40a4a0, client_ucap @ 0x46c3cc, server_fn @ 0x406c90
+	init_exit (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c0e4, server_fn @ 0x406820
+	capmgr_vm_vmcs_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c234, server_fn @ 0x405f50
+	memmgr_shared_page_allocn (3->2):	client_fn @ 0x40a220, client_ucap @ 0x46c36c, server_fn @ 0x406a50
+	capmgr_vm_msr_bitmap_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c24c, server_fn @ 0x405fc0
+	capmgr_aep_create_thunk (3->2):	client_fn @ 0x4078f0, client_ucap @ 0x46c15c, server_fn @ 0x405b00
+	capmgr_vm_lapic_access_create (3->2):	client_fn @ 0x40c0a0, client_ucap @ 0x46c264, server_fn @ 0x406030
+	capmgr_shared_kernel_page_create (3->2):	client_fn @ 0x407490, client_ucap @ 0x46c27c, server_fn @ 0x4060a0
+	capmgr_thd_create_thunk (3->2):	client_fn @ 0x4077b0, client_ucap @ 0x46c114, server_fn @ 0x405950
+	addr_get (2->1):	client_fn @ 0x407d40, client_ucap @ 0x46c128, server_fn @ 0x402e10
+	init_exit (2->1):	client_fn @ 0x407d40, client_ucap @ 0x46c110, server_fn @ 0x402da0
+	init_done (2->1):	client_fn @ 0x406e30, client_ucap @ 0x46c0f8, server_fn @ 0x402d30
+Capability manager memory delegation (1 capmgrs): 2147483648 bytes.
+Kernel resources created, booting components!
+Execution schedule:
+	Created scheduling execution for 2
+Initializing component 2 (executing cos_init).
+Starting the capability manager.
+Components in shared address spaces: none
+Capmgr: processing 12 capabilities for components that have already been booted
+	Creating component tests.unit_pingpong.global.ping: id 6
+		captbl:88, pgtbl:92, comp:96, captbl/pgtbl frontiers 100 & 1661000, sched 3
+	Creating component tests.unit_schedcomp.global.schedtest: id 5
+		captbl:76, pgtbl:80, comp:84, captbl/pgtbl frontiers 132 & 45f000, sched 3
+	Creating component pong.pingpong.global.pong: id 4
+		captbl:64, pgtbl:68, comp:72, captbl/pgtbl frontiers 64 & 45d000, sched 3
+	Creating component sched.pfprr_quantum_static.global.sched: id 3
+		captbl:52, pgtbl:56, comp:60, captbl/pgtbl frontiers 184 & 5b3000, sched 2
+Capmgr: 1 components that need execution
+	Created scheduling execution for 3
+Component 2 initialization complete, awaiting main execution.
+Switching to main in component 2.
+Executing main in component 2.
+Initializing component 3 (executing cos_init).
+	Sched 3: 3 components that need execution
+	Sched 3: 4 is the 0th component to initialize
+	Sched 3: 5 is the 1th component to initialize
+	Sched 3: 6 is the 2th component to initialize
+Component 3 initialization complete, awaiting main execution.
+Switching to main in component 3.
+Executing main in component 3.
+Starting scheduler loop...
+Scheduler 3: Running initialization thread.
+Pong component 4: cos_init
+Pong component 4: cos_parallel_init on core 0 (of 1)
+	Scheduler 3: initializing component 4 with thread 7.
+	Scheduler 3: initializing component 5 with thread 8.
+Ping component 6: cos_init execution
+PD: Pong args - sz:1024,SD:4,Mean:1203,99%:1208, Max: 1272
+	Scheduler 3: initializing component 6 with thread 9.
+Scheduler 3, initialization completed.
+Pong component 4: parallel main
+	Scheduler 3: Exiting thread 7 from component 4
+(0,8,5) DBG:Unit-test scheduling manager component
+Ping component 6: main execution
+Fast-path invocation: 1193 cycles
+Three return value invocation: 1162 cycles
+Pong args invocation: 1192 cycles
+	Scheduler 3: Exiting thread 9 from component 6
+(0,10,5) DBG:Test successful! Highest was scheduled only!
+(0,10,5) DBG:Test successful! We swapped back and forth!
+(0,10,5) DBG:Done testing, spinning...

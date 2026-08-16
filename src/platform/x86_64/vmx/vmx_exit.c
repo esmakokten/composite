@@ -22,6 +22,23 @@ int expended_process(struct pt_regs *regs, struct thread *thd_curr, struct comp_
 /* The tmp regs stack used for VM-exit switching to other threads */
 static struct pt_regs tmp_regs[NUM_CPU];
 
+/*
+ * Per-CPU cache of host MSR values. These are constant per-core and
+ * populated on the first generic VM exit. The vmcall fast path uses
+ * these instead of reading from the per-thread vcpu_ctx.
+ */
+struct host_msr_cache {
+	u64_t gs_base;
+	u64_t gskernel_base;
+	u64_t tsc_aux;
+	u64_t star;
+	u64_t lstar;
+	u64_t cstar;
+	u64_t fmask;
+	int   initialized;
+};
+static struct host_msr_cache host_msr_cache[NUM_CPU];
+
 /* When VMM tries to write cr0/cr4, kernel needs to take care of them */
 extern u64_t cr4_fixed1_bits;
 extern u64_t cr4_fixed0_bits;
@@ -42,12 +59,69 @@ posted_intr_inject(void)
 	chal_selfipi(HW_LAPIC_POSTED_INTR);
 }
 
+/*
+ * Fast-path VM IPC resume: called from sret_ret when a VM vCPU returns
+ * from an IPC. Only restores guest MSRs, sets the
+ * return value in rax, and vmresumes.
+ *
+ * Matches native IPC: single return value in rax.
+ */
+void
+vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
+{
+	/* Which is cheaper to get it through arguments or look it up? */
+	//struct thread *thd = thd_current(cos_cpu_local_info());
+
+	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
+	msr_set(IA32_GS_BASE, thd->vcpu_ctx.vmcs.guest_msr_gs_base);
+	msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
+	msr_set(IA32_TSC_AUX, thd->vcpu_ctx.vmcs.guest_tsc_aux);
+	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
+	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
+	msr_set(IA32_CSTAR, thd->vcpu_ctx.vmcs.guest_cstar);
+	msr_set(IA32_FMASK, thd->vcpu_ctx.vmcs.guest_fmask);
+
+	/*
+	 * Restore all GPs from pt_regs and vmresume.
+	 */
+	__asm__ __volatile__(
+				"movq %%rax, %%rsp\n\t"		\
+				"addq $0x20, %%rsp\n\t" 	\
+				"popq %%r15\n\t"		\
+				"popq %%r14\n\t"		\
+				"popq %%r13\n\t"		\
+				"popq %%r12\n\t"		\
+				"popq %%r11\n\t"		\
+				"popq %%r10\n\t"		\
+				"popq %%r9\n\t"			\
+				"popq %%r8\n\t"			\
+				"popq %%rbx\n\t"		\
+				"popq %%rcx\n\t"		\
+				"popq %%rdx\n\t"		\
+				"popq %%rsi\n\t"		\
+				"popq %%rdi\n\t"		\
+				"popq %%rbp\n\t"		\
+				"popq %%rax\n\t"		\
+				"addq $0x30, %%rsp\n\t"		\
+				"vmresume\n\t"
+				:
+				: "a"(regs)
+				:);
+
+	/* vmresume should not return */
+	vmx_assert(0);
+}
 
 void
 vmx_resume(struct thread *thd)
 {
 	struct vm_vcpu_shared_region *shared_region;
 	u64_t val;
+
+	/* Used for VMM manages virtual lapic interrupts */
+	if (shared_region->interrupt_status) {
+		vmwrite(GUEST_INTERRUPT_STATUS, shared_region->interrupt_status);
+	}
 
 	if (unlikely(thd->vcpu_ctx.state == VM_THD_STATE_STOPPED)) return;
 	vmx_assert(thd->vcpu_ctx.state == VM_THD_STATE_RUNNING);
@@ -77,10 +151,6 @@ vmx_resume(struct thread *thd)
 		vmwrite(VM_ENTRY_CONTROLS, vm_entry_ctls);
 	}
 
-	/* Used for VMM manages virtual lapic interrupts */
-	if (shared_region->interrupt_status) {
-		vmwrite(GUEST_INTERRUPT_STATUS, shared_region->interrupt_status);
-	}
 
 #if VMX_SUPPORT_POSTED_INTR
 	/* 
@@ -155,6 +225,98 @@ timer_process(struct pt_regs *regs, struct thread *thd_curr)
 	return expended_process(regs, thd_curr, comp, cos_info, 0);
 }
 
+/*
+ * VMCALL fast-path C handler: called from vmx_exit_handler_asm when
+ * the exit reason is VMCALL (18). Receives IPC arguments using the
+/*
+ * VMCALL fast-path C handler: called from vmx_exit_handler_asm when
+ * the exit reason is VMCALL (18).
+ *
+ * Receives a pointer to the fully saved guest registers (pt_regs style)
+ * so we can memcpy them to shared_region for vmx_ipc_resume to restore.
+ *
+ * Args:
+ *   regs: pt_regs struct with guest GP registers.
+ *
+ * Native Composite IPC register convention is decoded from regs:
+ *   cap_encoded = guest rax: (cap + 1) << 16  (same as native sinv)
+ *   arg1 = guest rbx, arg2 = guest rsi, arg3 = guest rdi, arg4 = guest rdx
+ */
+
+// Put them into same elf section?
+void
+vmx_vmcall_fast_handler(struct pt_regs *regs)
+{
+	int ret = 0;
+	unsigned long cpuid;
+	struct cos_cpu_local_info *cos_info;
+	struct thread *thd_curr;
+	struct comp_info *curr_ci;
+	struct cap_sinv  *sinvc;
+	struct host_msr_cache *cache;
+	capid_t cap;
+
+	cos_info = cos_cpu_local_info();
+	thd_curr = thd_current(cos_info);
+	cpuid = cos_info->cpuid;
+	cache = &host_msr_cache[cpuid];
+
+	/* Decode sinv cap using same formula as __userregs_getcap */
+	cap = (regs->ax >> COS_CAPABILITY_OFFSET) - 1;
+	thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST;
+	/*
+	 * Save current guest MSRs before overwriting them.
+	 * If we don't save them here, vmx_ipc_resume will restore stale values,
+	 * causing GS_BASE corruption and crashes in guest OSes like Linux.
+	 */
+	thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base = msr_get(IA32_GS_BASE);
+	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
+	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
+	/*thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
+	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
+	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
+	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);*/
+	/* Look up the sinv cap and target comp_info */
+	unsigned long ip, sp;
+	curr_ci = thd_invstk_current(thd_curr, &ip, &sp, cos_info);
+	if (unlikely(!curr_ci)) {
+		printk("cos: vmcall fast: no comp_info\n");
+		regs->ax = (word_t)-EINVAL;
+		vmwrite(GUEST_RIP, regs->r8);
+		return;
+	}
+
+	sinvc = (struct cap_sinv *)captbl_lkup(curr_ci->captbl, cap);
+	if (unlikely(!sinvc || sinvc->h.type != CAP_SINV)) {
+		printk("cos: vmcall fast: no sinv at cap %lu\n", (unsigned long)cap);
+		regs->ax = (word_t)-EINVAL;
+		vmwrite(GUEST_RIP, regs->r8);
+		return;
+	}
+
+	/*
+	 * Restore host MSRs from per-CPU cache (constant per core).
+	 * We must do this before server execution because the server
+	 * uses syscall, which depends on host STAR/LSTAR/FMASK/GS_BASE.
+	 */
+	msr_set(IA32_GS_BASE, cache->gs_base);
+	msr_set(IA32_KERNEL_GSBASE, cache->gskernel_base);
+	msr_set(IA32_TSC_AUX, cache->tsc_aux);
+	msr_set(IA32_STAR, cache->star);
+	msr_set(IA32_LSTAR, cache->lstar);
+	msr_set(IA32_CSTAR, cache->cstar);
+	msr_set(IA32_FMASK, cache->fmask);
+
+	/* Only GUEST_RIP needs updating (r9 holds the return address) */
+	vmwrite(GUEST_RIP, regs->r9);
+	sinv_call(thd_curr, sinvc, regs, cos_info);	
+	/* no thread switch → restore_from_vm → sysretq */
+	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx":
+			 : "a"(ret), "b"(regs),"c"(&restore_from_vm));
+	/* Should never come here */
+	vmx_assert(0);
+}
+
 void
 vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 {
@@ -169,6 +331,23 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	thd_curr = thd_current(cos_info);	
 	cpuid = cos_info->cpuid;
 
+	vmx_assert(cos_info);
+	vmx_assert(thd_curr && thd_curr->cpuid == get_cpuid());
+	vmx_assert(thd_curr->thd_type == THD_TYPE_VM);
+
+	/*
+	 * Generic exit path only — VMCALL is handled by vmx_vmcall_fast_handler
+	 * via the asm fast path and never reaches here.
+	 */
+	reason = vmread(EXIT_REASON);
+	reason_nr = reason & 0xffff;
+	vmx_assert(reason_nr < MAX_VM_EXIT_REASONS);
+	VMX_DEBUG("VM thd: %u on core: %u get VM-exit (reason: ) on handler: %u\n", thd_curr->tid, cos_info->cpuid, reason_nr, thd_exception_handler->tid);
+
+	/*
+	 * Full MSR save/restore for generic exits.
+	 * Also populates the per-CPU host MSR cache on first exit.
+	 */
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base = msr_get(IA32_GS_BASE);
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
@@ -176,7 +355,7 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);
-	
+
 	msr_set(IA32_GS_BASE, thd_curr->vcpu_ctx.vmcs.host_msr_gs_base);
 	msr_set(IA32_KERNEL_GSBASE, thd_curr->vcpu_ctx.vmcs.host_msr_gskernel_base);
 	msr_set(IA32_TSC_AUX, thd_curr->vcpu_ctx.vmcs.host_tsc_aux);
@@ -185,30 +364,26 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	msr_set(IA32_CSTAR, thd_curr->vcpu_ctx.vmcs.host_cstar);
 	msr_set(IA32_FMASK, thd_curr->vcpu_ctx.vmcs.host_fmask);
 
-	vmx_assert(cos_info);
-	vmx_assert(thd_curr && thd_curr->cpuid == get_cpuid());
-	vmx_assert(thd_curr->thd_type == THD_TYPE_VM);
+	/* Cache host MSR values per-CPU (they're constant per core) */
+	if (unlikely(!host_msr_cache[cpuid].initialized)) {
+		host_msr_cache[cpuid].gs_base       = thd_curr->vcpu_ctx.vmcs.host_msr_gs_base;
+		host_msr_cache[cpuid].gskernel_base = thd_curr->vcpu_ctx.vmcs.host_msr_gskernel_base;
+		host_msr_cache[cpuid].tsc_aux       = thd_curr->vcpu_ctx.vmcs.host_tsc_aux;
+		host_msr_cache[cpuid].star          = thd_curr->vcpu_ctx.vmcs.host_star;
+		host_msr_cache[cpuid].lstar         = thd_curr->vcpu_ctx.vmcs.host_lstar;
+		host_msr_cache[cpuid].cstar         = thd_curr->vcpu_ctx.vmcs.host_cstar;
+		host_msr_cache[cpuid].fmask         = thd_curr->vcpu_ctx.vmcs.host_fmask;
+		host_msr_cache[cpuid].initialized   = 1;
+	}
 
-	shared_region = thd_curr->vm_vcpu_shared_region;
-	thd_exception_handler = thd_curr->exception_handler;
-	
-	reason = vmread(EXIT_REASON);
 	qualification = vmread(EXIT_QUALIFICATION);
 	gla = vmread(EXIT_GUEST_LINEAR_ADDRESS);
 	gpa = vmread(EXIT_GUEST_PHYSICAL_ADDRESS);
 	inst_length = vmread(EXIT_INSTRUCTION_LENGTH);
 	inst_info = vmread(EXIT_INSTRUCTION_INFORMATION);
 
-	if (unlikely(reason & (1 << 31))) {
-		/* TODO: Should not happen, but need to handle this case correctly later */
-		VMX_DEBUG("exit reason:%x(%lu)\n", reason, reason);
-		VMX_DEBUG("exit qualification:0x%x\n", qualification);
-		vmx_assert(0);
-	}
-
-	reason_nr = reason & 0xffff;
-	vmx_assert(reason_nr < MAX_VM_EXIT_REASONS);
-	VMX_DEBUG("VM thd: %u on core: %u get VM-exit (reason: ) on handler: %u\n", thd_curr->tid, cos_info->cpuid, reason_nr, thd_exception_handler->tid);
+	thd_exception_handler = thd_curr->exception_handler;
+	shared_region = thd_curr->vm_vcpu_shared_region;
 
 	/* Share GPs with VMM */
 	memcpy(shared_region, regs, sizeof(struct vm_vcpu_shared_region));
@@ -231,91 +406,7 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	/* Save fs for vcpu, this will be restoed later in the thread switch path, thus safe */
 	thd_curr->tls = msr_get(IA32_FS_BASE);
 
-	
-	if (reason_nr == VM_EXIT_REASON_VMCALL) {
-		/*
-		 * VM IPC: Guest vmcall → sinv_call on thd_curr (the VM vCPU thread).
-		 * thd_curr migrates to the server component via sinv, exactly like
-		 * a native Composite component calling cos_sinv.
-		 * On server sret, sret_ret detects THD_TYPE_VM and calls vmx_resume.
-		 * 
-		 * Guest convention: rax=fn, rbx=arg0, rcx=arg1, rdx=arg2, rsi=arg3
-		 * Composite sinv convention (x86_64): arg1=bx, arg2=si, arg3=di, arg4=dx
-		 */
-		word_t fn  = shared_region->ax;
-		word_t a0  = shared_region->bx, a1 = shared_region->cx;
-		word_t a2  = shared_region->dx, a3 = shared_region->si;
-		struct comp_info *curr_ci;
-		struct cap_sinv  *sinvc;
-		unsigned long     ip, sp;
-
-		curr_ci = thd_invstk_current(thd_curr, &ip, &sp, cos_info);
-		if (unlikely(!curr_ci || fn >= VM_IPC_MAX_SINV_CAPS)) goto vmcall_err;
-
-		sinvc = (struct cap_sinv *)captbl_lkup(curr_ci->captbl,
-		                                        VM_IPC_SINV_CAP_BASE + fn);
-		
-		if (unlikely(!sinvc || sinvc->h.type != CAP_SINV)) goto vmcall_err;
-
-		/* Map guest args to Composite sinv calling convention */
-		
-		tmp_regs[cpuid].sp = sp;
-		tmp_regs[cpuid].ip = ip;
-
-		tmp_regs[cpuid].bx = a0;  /* arg1: rbx → bx */
-		tmp_regs[cpuid].si = a1;  /* arg2: rcx → si */
-		tmp_regs[cpuid].di = a2;  /* arg3: rdx → di */
-		tmp_regs[cpuid].dx = a3;  /* arg4: rsi → dx */
-
-		/*printk("cos: debug vmcall from VM (fn %lu, a0 %lu, a1 %lu, a2 %lu, a3 %lu) → bx=%lu si=%lu di=%lu dx=%lu\n",
-			fn, a0, a1, a2, a3,
-			tmp_regs[cpuid].bx, tmp_regs[cpuid].si,
-			tmp_regs[cpuid].di, tmp_regs[cpuid].dx); 
-*/
-		/* Advance guest RIP past the vmcall instruction.
-		 * This is done now so that when sret_ret calls vmx_resume,
-		 * the guest continues at the instruction after vmcall. */
-		shared_region->ip += shared_region->inst_length;
-
-		sinv_call(thd_curr, sinvc, &tmp_regs[cpuid], cos_info);
-
-		/* ret=0: no thread switch → restore_from_vm → sysretq
-		 * thd_curr runs the server at its entry point. */
-		ret = 0;
-		goto vmcall_done;
-
-	vmcall_err:
-	    printk("cos: invalid vmcall from VM (fn %lu, slot %lu)\n",
-	           fn, VM_IPC_SINV_CAP_BASE + fn);
-		printk("cos: sinvc=%p, type=%d\n", sinvc, sinvc ? sinvc->h.type : -1);
-		
-		/* Debug: Print addresses returned by captbl_lkup for all slots */
-		printk("cos: captbl_lkup results for all VM IPC slots:\n");
-		for (int i = 0; i < VM_IPC_MAX_SINV_CAPS; i++) {
-			void *ptr = captbl_lkup(curr_ci->captbl, VM_IPC_SINV_CAP_BASE + i);
-			printk("cos:   slot %d (cap %d): ptr=%p", i, VM_IPC_SINV_CAP_BASE + i, ptr);
-			if (ptr) {
-				struct cap_sinv *s = (struct cap_sinv *)ptr;
-				printk(", type=%d, entry=%p", s->h.type, s->entry_addr);
-			}
-			printk("\n");
-		}
-		
-		/* Print all installed SINV caps for debugging */
-		printk("cos: Installed SINV capabilities:\n");
-		for (int i = 0; i < VM_IPC_MAX_SINV_CAPS; i++) {
-			struct cap_sinv *s = (struct cap_sinv *)captbl_lkup(curr_ci->captbl,
-			                                                     VM_IPC_SINV_CAP_BASE + i);
-			if (s && s->h.type == CAP_SINV) {
-				printk("cos:   slot %d (cap %d): entry=%p, comp_id=%d\n",
-				       i, VM_IPC_SINV_CAP_BASE + i, s->entry_addr, 
-				       s->comp_info.liveness.id);
-			}
-		}
-		
-		shared_region->ax  = (word_t)-EINVAL;
-		shared_region->ip += shared_region->inst_length;
-	} else if (reason_nr == VM_EXIT_REASON_EXTERNAL_INTERRUPT) {
+	if (reason_nr == VM_EXIT_REASON_EXTERNAL_INTERRUPT) {
 		u64_t intr_info;
 		u8_t vector;
 
@@ -357,7 +448,6 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 		vmx_assert(ret == 0);
 	}
 
-	vmcall_done: ;
 	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx": : "a"(ret), "b"(&tmp_regs[cpuid]),"c"(&restore_from_vm));
 
 	/* Should never come here */

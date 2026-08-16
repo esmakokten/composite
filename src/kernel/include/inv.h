@@ -17,7 +17,7 @@
 #include "chal/call_convention.h"
 
 /* Forward declaration for VM IPC: resume VM after sret from vmcall-based IPC */
-void vmx_resume(struct thread *thd);
+void vmx_ipc_resume(struct thread *thd, struct pt_regs *regs);
 
 struct cap_sinv {
 	struct cap_header h;
@@ -336,13 +336,8 @@ sret_ret(struct thread *thd, struct pt_regs *regs, struct cos_cpu_local_info *co
 	 */
 	if (unlikely(thd->thd_type == THD_TYPE_VM &&
 	             curr_invstk_top(cos_info) == 0)) {
-		struct vm_vcpu_shared_region *sr =
-			(struct vm_vcpu_shared_region *)thd->vm_vcpu_shared_region;
-
-		sr->ax = __userregs_getinvret(regs);
-		sr->si = regs->si;
-		sr->di = regs->di;
-		vmx_resume(thd); /* does not return */
+		regs->ax = __userregs_getinvret(regs); /* return value */
+		vmx_ipc_resume(thd, regs); /* does not return */
 	}
 
 	if (unlikely(!ltbl_isalive(&ci->liveness))) {

@@ -10,3 +10,6 @@ struct thread;
 void vmx_exit_handler_asm(void);
 void vmx_resume(struct thread *thd);
 void vmx_exit_handler(struct vm_vcpu_shared_region *regs);
+void vmx_ipc_resume(struct thread *thd, struct pt_regs *regs);
+void vmx_vmcall_fast_handler(struct pt_regs *regs);
+

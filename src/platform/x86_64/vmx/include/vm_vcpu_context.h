@@ -6,6 +6,7 @@
 typedef enum {
 	VM_THD_STATE_STOPPED    = 1,
 	VM_THD_STATE_RUNNING    = 1 << 1, 
+	VM_THD_STATE_VMCALL_FAST = 1 << 2,
 } vm_thd_state_t;
 
 struct vm_vcpu_context {

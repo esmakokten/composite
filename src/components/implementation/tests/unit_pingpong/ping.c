@@ -2,10 +2,30 @@
 #include <cos_types.h>
 #include <pong.h>
 #include <ps.h>
+#include <perfdata.h>
 
 #define ITER 1024
 
-volatile ps_tsc_t fast_path, all_args;
+volatile ps_tsc_t fast_path, pong_args_mes, all_args;
+
+struct perfdata perf;
+cycles_t result[ITER] = {0, };
+
+/* Serialized RDTSC measurements */
+static inline unsigned long rdtsc_serialized_start(void) {
+	unsigned int a, d;
+	asm volatile("cpuid" : : "a"(0) : "rbx","rcx","rdx");
+	asm volatile("rdtsc" : "=a"(a), "=d"(d));
+	return ((unsigned long)d<<32) | a;
+}
+
+static inline unsigned long rdtsc_serialized_end(void) {
+	unsigned int a, d, c;
+	asm volatile("rdtscp" : "=a"(a), "=d"(d), "=c"(c));
+	asm volatile("lfence");
+	return ((unsigned long)d<<32) | a;
+}
+
 
 void
 cos_init(void)
@@ -62,6 +82,23 @@ cos_init(void)
 	end = ps_tsc();
 	all_args = (end - begin)/ITER;
 
+	begin = ps_tsc();
+	for (i = 0; i < ITER; i++) {
+		pong_args(1, 2, 3, 4);
+	}
+	end = ps_tsc();
+	pong_args_mes = (end - begin)/ITER;
+
+
+	perfdata_init(&perf, "Pong args", result, ITER);
+	for (i = 0; i < ITER; i++) {
+		begin = rdtsc_serialized_start();
+		pong_args(1, 2, 3, 4);
+		end = rdtsc_serialized_end();
+		perfdata_add(&perf, end - begin);
+	}
+	perfdata_calc(&perf);
+	perfdata_print(&perf);
 	return;
 }
 
@@ -71,6 +108,7 @@ main(void)
 	printc("Ping component %ld: main execution\n", cos_compid());
 	printc("Fast-path invocation: %llu cycles\n", fast_path);
 	printc("Three return value invocation: %llu cycles\n", all_args);
+	printc("Pong args invocation: %llu cycles\n", pong_args_mes);
 
 	return 0;
 }
