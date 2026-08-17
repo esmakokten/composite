@@ -118,15 +118,15 @@ vmx_resume(struct thread *thd)
 	struct vm_vcpu_shared_region *shared_region;
 	u64_t val;
 
-	/* Used for VMM manages virtual lapic interrupts */
-	if (shared_region->interrupt_status) {
-		vmwrite(GUEST_INTERRUPT_STATUS, shared_region->interrupt_status);
-	}
-
 	if (unlikely(thd->vcpu_ctx.state == VM_THD_STATE_STOPPED)) return;
 	vmx_assert(thd->vcpu_ctx.state == VM_THD_STATE_RUNNING);
 
 	shared_region = thd->vm_vcpu_shared_region;
+
+	/* Used for VMM manages virtual lapic interrupts */
+	if (shared_region->interrupt_status) {
+		vmwrite(GUEST_INTERRUPT_STATUS, shared_region->interrupt_status);
+	}
 
 	/* User level VMM is responsible to set vcpu's state like ip and sp, or a VM-exit will happen, the kernel should be safe */
 	vmwrite(GUEST_RIP, shared_region->ip);
@@ -335,6 +335,8 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	vmx_assert(thd_curr && thd_curr->cpuid == get_cpuid());
 	vmx_assert(thd_curr->thd_type == THD_TYPE_VM);
 
+	thd_exception_handler = thd_curr->exception_handler;
+
 	/*
 	 * Generic exit path only — VMCALL is handled by vmx_vmcall_fast_handler
 	 * via the asm fast path and never reaches here.
@@ -382,7 +384,6 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	inst_length = vmread(EXIT_INSTRUCTION_LENGTH);
 	inst_info = vmread(EXIT_INSTRUCTION_INFORMATION);
 
-	thd_exception_handler = thd_curr->exception_handler;
 	shared_region = thd_curr->vm_vcpu_shared_region;
 
 	/* Share GPs with VMM */
