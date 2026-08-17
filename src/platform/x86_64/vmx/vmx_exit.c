@@ -26,6 +26,10 @@ static struct pt_regs tmp_regs[NUM_CPU];
  * Per-CPU cache of host MSR values. These are constant per-core and
  * populated on the first generic VM exit. The vmcall fast path uses
  * these instead of reading from the per-thread vcpu_ctx.
+ *
+ * Not static: the assembly-only MSR-swap benchmark path in
+ * vmx_exit_asm.S reads host_msr_cache[0] directly (NUM_CPU == 1 in
+ * this build, so no per-cpu indexing is done there).
  */
 struct host_msr_cache {
 	u64_t gs_base;
@@ -37,7 +41,7 @@ struct host_msr_cache {
 	u64_t fmask;
 	int   initialized;
 };
-static struct host_msr_cache host_msr_cache[NUM_CPU];
+struct host_msr_cache host_msr_cache[NUM_CPU];
 
 /* When VMM tries to write cr0/cr4, kernel needs to take care of them */
 extern u64_t cr4_fixed1_bits;
@@ -271,8 +275,8 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 */
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base = msr_get(IA32_GS_BASE);
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
-	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
-	/*thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
+	/*thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
+	thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
 	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);*/
@@ -309,6 +313,16 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
 	vmwrite(GUEST_RIP, regs->r9);
+
+	/* for measurement vmcall_msrs comment out 
+		ln311(vmwrite(GUEST_RIP, regs->r9)) and ln266 (thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST)
+	u64_t inst_length = vmread(EXIT_INSTRUCTION_LENGTH);
+	u64_t guest_rip = vmread(GUEST_RIP);
+	guest_rip = guest_rip + inst_length;
+	vmwrite(GUEST_RIP, guest_rip);
+	vmx_ipc_resume(thd_curr, regs);
+	*/
+
 	sinv_call(thd_curr, sinvc, regs, cos_info);	
 	/* no thread switch → restore_from_vm → sysretq */
 	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx":

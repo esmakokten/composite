@@ -166,7 +166,7 @@ cos_init(void)
 	/*
 	 * VM IPC: Install pong sinv cap into the VM component's captbl
 	 * Slot 0: pong_args (sum of 4 arguments)
-	 */
+	 
 	{
 		extern struct usr_inv_cap __cosrt_ucap_pong_args;
 		int ret;
@@ -179,7 +179,7 @@ cos_init(void)
 			       VM_IPC_SINV_CAP_BASE);
 		}
 	}
-
+*/
 	if (nic_netio_shmem_map) {
 		/* Create TX thread for transmitting packets to NIC */
 		g_vm->tx_thd = sched_thd_create(virtio_tx_task, NULL);
