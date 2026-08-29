@@ -138,6 +138,19 @@ fpu_is_disabled(void)
 	return *disabled;
 }
 
+/*
+ * A VM exit reloads CR0 from the VMCS HOST_CR0 field, which is a snapshot
+ * taken once in vmx_host_state_init(). That silently overwrites CR0.TS
+ * behind the kernel's back, desynchronising it from the per-CPU
+ * fpu_disabled shadow that fpu_enable()/fpu_disable() maintain. Re-derive
+ * the shadow from hardware after an exit so the two agree again.
+ */
+static inline void
+fpu_shadow_resync(void)
+{
+	*PERCPU_GET(fpu_disabled) = !!(fpu_read_cr0() & FPU_DISABLED_MASK);
+}
+
 static inline unsigned long
 fpu_read_cr0(void)
 {

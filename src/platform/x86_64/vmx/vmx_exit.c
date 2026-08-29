@@ -1,5 +1,6 @@
 #include <chal_cpu.h>
 #include <thd.h>
+#include <fpu.h>
 #include <cpuid.h>
 #include <chal_asm_inc.h>
 #include <vmx.h>
@@ -270,6 +271,9 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	cpuid = cos_info->cpuid;
 	cache = &host_msr_cache[cpuid];
 
+	/* The VM exit just reloaded CR0 from HOST_CR0; resync the FPU shadow. */
+	fpu_shadow_resync();
+
 	/* Decode sinv cap using same formula as __userregs_getcap */
 	cap = (regs->ax >> COS_CAPABILITY_OFFSET) - 1;
 	thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST;
@@ -339,6 +343,9 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	cos_info = cos_cpu_local_info();
 	thd_curr = thd_current(cos_info);	
 	cpuid = cos_info->cpuid;
+
+	/* The VM exit just reloaded CR0 from HOST_CR0; resync the FPU shadow. */
+	fpu_shadow_resync();
 
 	vmx_assert(cos_info);
 	vmx_assert(thd_curr && thd_curr->cpuid == get_cpuid());
