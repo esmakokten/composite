@@ -72,6 +72,15 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	/* Which is cheaper to get it through arguments or look it up? */
 	//struct thread *thd = thd_current(cos_cpu_local_info());
 
+	/*
+	 * The fast-path excursion ends here. vmx_vmcall_fast_handler set
+	 * state to VM_THD_STATE_VMCALL_FAST on the way in and nothing else
+	 * clears it, so without this the next scheduler-driven resume
+	 * (vmx_thd_start_or_resume -> vmx_resume) trips the
+	 * state == VM_THD_STATE_RUNNING assertion.
+	 */
+	thd->vcpu_ctx.state = VM_THD_STATE_RUNNING;
+
 	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
 	msr_set(IA32_GS_BASE, thd->vcpu_ctx.vmcs.guest_msr_gs_base);
 	msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
