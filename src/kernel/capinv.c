@@ -443,7 +443,27 @@ cap_thd_switch(struct pt_regs *regs, struct thread *curr, struct thread *next, s
 	/* Not sure of the trade-off here: Branch cost vs. segment register update */
 	if (next->tls != curr->tls) chal_tls_update(next->tls);
 
-	if (next->thd_type == THD_TYPE_VM) {
+	/*
+	 * Only resume the guest if this vCPU thread is actually at VM
+	 * context, i.e. invocation-stack depth 0. A vCPU thread preempted
+	 * part-way through a vmcall errand is executing inside a component
+	 * at depth > 0; vmresuming here would discard that component frame
+	 * and trip vmx_resume's state == VM_THD_STATE_RUNNING assertion.
+	 * Falling through leaves it to the normal thread-resume path below,
+	 * which returns the thread to user level so the errand finishes and
+	 * reaches vmx_ipc_resume by its own sret.
+	 *
+	 * This mirrors the depth-0 guard already on the sret path in
+	 * inv.h, whose comment gives the same rationale for chained IPC.
+	 * thd_current_update() above has already committed the cached depth,
+	 * so next->invstk_top is live here and equals curr_invstk_top().
+	 *
+	 * The invocation-stack depth is the predicate rather than
+	 * vcpu_ctx.state: it is the same structural invariant inv.h uses and
+	 * does not depend on the state flag being maintained correctly.
+	 */
+	if (next->thd_type == THD_TYPE_VM && next->invstk_top == 0) {
+		assert(next->vcpu_ctx.state != VM_THD_STATE_VMCALL_FAST);
 		thd_vm_exec(next);
 	}
 
