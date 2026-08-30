@@ -85,7 +85,6 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
 	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
 	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
-	msr_set(IA32_FMASK, thd->vcpu_ctx.vmcs.guest_fmask);
 
 	/*
 	 * Restore all GPs from pt_regs and vmresume.
@@ -286,12 +285,9 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 *   TSC_AUX         Composite never reads it; nothing in the tree
 	 *                   executes RDTSCP or RDPID.
 	 *
-	 * STAR/LSTAR/CSTAR/FMASK were already commented out before this work.
+	 * STAR, LSTAR, CSTAR and FMASK had no save on this path to begin with;
+	 * their (commented-out) remnants are removed with the FMASK change.
 	 */
-	/*thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
-	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
-	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
-	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);*/
 	/* Look up the sinv cap and target comp_info */
 	unsigned long ip, sp;
 	curr_ci = thd_invstk_current(thd_curr, &ip, &sp, cos_info);
@@ -317,7 +313,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 */
 	msr_set(IA32_STAR, cache->star);
 	msr_set(IA32_LSTAR, cache->lstar);
-	msr_set(IA32_FMASK, cache->fmask);
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
 	vmwrite(GUEST_RIP, regs->r9);

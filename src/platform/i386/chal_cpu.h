@@ -177,6 +177,13 @@ chal_cpuid(u32_t *a, u32_t *b, u32_t *c, u32_t *d)
 	asm volatile("cpuid" : "+a"(*a), "+b"(*b), "+c"(*c), "+d"(*d));
 }
 
+/*
+ * Linux's IA32_FMASK value, read out of the guest kernel source
+ * (arch/x86/kernel/cpu/common.c:1904-1909 in vmx-linux-5.15.107):
+ * X86_EFLAGS_CF|PF|AF|ZF|SF|TF|IF|DF|OF|IOPL|NT|RF|AC|ID.
+ */
+#define SFMASK_LINUX_COMPAT 0x257FD5
+
 static inline void
 chal_cpu_coreid_set(u32_t coreid)
 {
@@ -282,7 +289,25 @@ chal_cpu_init(void)
 
 	writemsr(MSR_STAR, 0, SEL_KCSEG | ((SEL_UCSEG - 16) << 16));
 	writemsr(MSR_LSTAR, (u32_t)((u64_t)sysenter_entry), (u32_t)((u64_t)sysenter_entry >> 32));
-	writemsr(MSR_SFMASK, 512, 0);
+	/*
+	 * RFLAGS bits SYSCALL clears on entry to the kernel. This is Linux's
+	 * mask (arch/x86/kernel/cpu/common.c syscall_init):
+	 *   CF PF AF ZF SF TF IF DF OF IOPL NT RF AC ID
+	 * Composite previously cleared only IF (0x200). Matching Linux makes
+	 * the value identical on both sides of a VM crossing, so the vmcall
+	 * fast path no longer has to swap IA32_FMASK.
+	 *
+	 * It is also a hardening fix independent of that. Clearing only IF let
+	 * a user component carry flags into the kernel:
+	 *   AC  persists and disables SMAP for the duration of the syscall
+	 *       (latent today -- Composite does not enable SMAP yet -- and it
+	 *       becomes live the day someone turns SMAP on);
+	 *   DF  leaves kernel string operations running in the direction user
+	 *       code chose, the classic std-before-syscall bug;
+	 *   NT, TF  the historical iret-fault and kernel-single-step hazards.
+	 * A clear-mask is monotone, so a larger value is strictly safer.
+	 */
+	writemsr(MSR_SFMASK, SFMASK_LINUX_COMPAT, 0);
 	writemsr(MSR_USER_GSBASE, 0, 0);
 	writemsr(MSR_KERNEL_GSBASE, (u32_t)((u64_t)(&kernel_stack_info[cpu_id])),
 	         (u32_t)((u64_t)(&kernel_stack_info[cpu_id]) >> 32));
