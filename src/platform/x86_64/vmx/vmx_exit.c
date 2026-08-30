@@ -83,7 +83,6 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	thd->vcpu_ctx.state = VM_THD_STATE_RUNNING;
 
 	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
-	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
 	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
 
 	/*
@@ -311,7 +310,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * We must do this before server execution because the server
 	 * uses syscall, which depends on host STAR/LSTAR/FMASK.
 	 */
-	msr_set(IA32_STAR, cache->star);
 	msr_set(IA32_LSTAR, cache->lstar);
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
