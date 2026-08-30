@@ -86,7 +86,6 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	msr_set(IA32_TSC_AUX, thd->vcpu_ctx.vmcs.guest_tsc_aux);
 	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
 	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
-	msr_set(IA32_CSTAR, thd->vcpu_ctx.vmcs.guest_cstar);
 	msr_set(IA32_FMASK, thd->vcpu_ctx.vmcs.guest_fmask);
 
 	/*
@@ -317,7 +316,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	msr_set(IA32_TSC_AUX, cache->tsc_aux);
 	msr_set(IA32_STAR, cache->star);
 	msr_set(IA32_LSTAR, cache->lstar);
-	msr_set(IA32_CSTAR, cache->cstar);
 	msr_set(IA32_FMASK, cache->fmask);
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
