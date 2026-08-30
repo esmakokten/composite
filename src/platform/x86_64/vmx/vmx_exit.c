@@ -83,7 +83,6 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	thd->vcpu_ctx.state = VM_THD_STATE_RUNNING;
 
 	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
-	msr_set(IA32_TSC_AUX, thd->vcpu_ctx.vmcs.guest_tsc_aux);
 	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
 	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
 	msr_set(IA32_FMASK, thd->vcpu_ctx.vmcs.guest_fmask);
@@ -275,17 +274,20 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	cap = (regs->ax >> COS_CAPABILITY_OFFSET) - 1;
 	thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST;
 	/*
-	 * Save current guest MSRs before overwriting them.
-	 * If we don't save them here, vmx_ipc_resume will restore stale values
-	 * and crash guest OSes like Linux.
+	 * No guest MSR save remains on this path. Each was removed with the
+	 * argument for why the guest's value does not need recording here:
 	 *
-	 * GS_BASE is deliberately absent: the VMCS carries HOST_GS_BASE and
-	 * GUEST_GS_BASE, so hardware round-trips it across the crossing
-	 * (SDM 30.5.2, 30.3.2, 29.3.2.2). Confirmed on this hardware -- an
-	 * rdmsr here returned HOST_GS_BASE, not the guest's value, so the
-	 * save it replaced was reading the wrong register anyway.
+	 *   GS_BASE         hardware round-trips it through the VMCS
+	 *                   (SDM 30.5.2, 30.3.2, 29.3.2.2), and an rdmsr here
+	 *                   was measured returning HOST_GS_BASE, not the
+	 *                   guest's value, so the save read the wrong register.
+	 *   KERNEL_GSBASE   the two swapgs bracketing the errand exchange it
+	 *                   back on their own.
+	 *   TSC_AUX         Composite never reads it; nothing in the tree
+	 *                   executes RDTSCP or RDPID.
+	 *
+	 * STAR/LSTAR/CSTAR/FMASK were already commented out before this work.
 	 */
-	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
 	/*thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
 	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
@@ -313,7 +315,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * We must do this before server execution because the server
 	 * uses syscall, which depends on host STAR/LSTAR/FMASK.
 	 */
-	msr_set(IA32_TSC_AUX, cache->tsc_aux);
 	msr_set(IA32_STAR, cache->star);
 	msr_set(IA32_LSTAR, cache->lstar);
 	msr_set(IA32_FMASK, cache->fmask);
