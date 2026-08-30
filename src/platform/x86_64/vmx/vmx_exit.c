@@ -83,7 +83,6 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	thd->vcpu_ctx.state = VM_THD_STATE_RUNNING;
 
 	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
-	msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
 	msr_set(IA32_TSC_AUX, thd->vcpu_ctx.vmcs.guest_tsc_aux);
 	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
 	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
@@ -287,7 +286,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * rdmsr here returned HOST_GS_BASE, not the guest's value, so the
 	 * save it replaced was reading the wrong register anyway.
 	 */
-	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
 	/*thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
 	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
@@ -316,7 +314,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * We must do this before server execution because the server
 	 * uses syscall, which depends on host STAR/LSTAR/FMASK.
 	 */
-	msr_set(IA32_KERNEL_GSBASE, cache->gskernel_base);
 	msr_set(IA32_TSC_AUX, cache->tsc_aux);
 	msr_set(IA32_STAR, cache->star);
 	msr_set(IA32_LSTAR, cache->lstar);
