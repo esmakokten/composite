@@ -25,7 +25,9 @@ Writing detailed code for the mirroring hook and the invalidation queue before t
 
 ## Global Constraints
 
-- **Platform is `x86_64` only.** `src/platform/i386/` has a parallel `miniacpi.c` and page-table type machinery. Do not modify it. The VMX support this work eventually serves lives only under `src/platform/x86_64/vmx/`.
+- **`src/platform/x86_64/` is mostly symlinks into `src/platform/i386/`.** There is no parallel 32-bit copy to leave alone: `miniacpi.c`, `kernel.c`, `chal_pgtbl.c`, `chal_pgtbl.h`, and `chal/chal_proto.h` are all one shared file, differentiated by `#if defined(__x86_64__)` / `#elif defined(__i386__)`. `Makefile` and `vm.c` are genuinely x86_64's own. Before editing any platform file, run `readlink src/platform/x86_64/<file>` and know which you are touching.
+- **Every shared-file edit must leave the 32-bit build behaviourally unchanged.** `paddr_t` is `unsigned long`, so it is 32 bits on i386 and 64 on x86_64: anything 64-bit-address-shaped needs an `#if defined(__x86_64__)` guard rather than a silent truncation. New x86_64-only code (`dmar.c`) is added to the x86_64 `Makefile` only, and its call sites in shared files are guarded.
+- **The VMX support this work eventually serves lives only under `src/platform/x86_64/vmx/`.**
 - **Hardware constants come from the VT-d specification, not from this document.** Register offsets, capability-register bit positions, and descriptor layouts are named here by their spec names and left for the implementer to fill in from *Intel Virtualization Technology for Directed I/O, Architecture Specification*. Any constant written speculatively into this plan would look authoritative and be wrong. Where this plan shows a struct or a decode, treat the field names as the contract and the numeric values as to-be-sourced.
 - **Bounded static allocation only.** The kernel has no dynamic allocator at this stage of boot. All DMAR state lives in fixed-size arrays with a compile-time maximum and a fail-fast assert on overflow, following the existing `DEV_MAPS_MAX` pattern in `src/platform/x86_64/vm.c:114`.
 - **Every kernel printk added for verification is permanent, not scaffolding.** Boot-time reporting of what the IOMMU hardware is and what it supports is the only observability this subsystem will have until fault reporting lands in K10. Write it to be read.
@@ -54,13 +56,13 @@ For component-level tasks the repository does have a convention worth following:
 | File | Responsibility | Status |
 |---|---|---|
 | `tools/run.sh` | QEMU invocation; gains a machine-type and IOMMU option | Modify |
-| `src/platform/x86_64/miniacpi.c` | RSDP/RSDT/XSDT walk, table lookup by signature | Modify |
+| `src/platform/i386/miniacpi.c` (x86_64 symlinks to it) | RSDP/RSDT/XSDT walk, table lookup by signature | Modify |
 | `src/platform/x86_64/dmar.h` | DMAR/DRHD/RMRR structure definitions and the parsed-state interface | Create |
 | `src/platform/x86_64/dmar.c` | DMAR table parse, register mapping, capability decode | Create |
-| `src/platform/x86_64/chal/chal_proto.h` | Page-table type constants | Modify |
-| `src/platform/x86_64/chal_pgtbl.h` | VT-d second-level flag definitions, beside the EPT ones | Modify |
-| `src/platform/x86_64/chal_pgtbl.c` | Page-table type dispatch | Modify |
-| `src/platform/x86_64/kernel.c` | Boot sequence; calls DMAR init after ACPI init | Modify |
+| `src/platform/i386/chal/chal_proto.h` (shared) | Page-table type constants | Modify |
+| `src/platform/i386/chal_pgtbl.h` (shared) | VT-d second-level flag definitions, beside the EPT ones | Modify |
+| `src/platform/i386/chal_pgtbl.c` (shared) | Page-table type dispatch | Modify |
+| `src/platform/i386/kernel.c` (shared) | Boot sequence; guarded call to DMAR init after ACPI init | Modify |
 
 `dmar.c` is a new file rather than an addition to `miniacpi.c` because the two have different jobs: `miniacpi.c` finds tables, `dmar.c` interprets one specific table and owns the hardware behind it. Keeping DMAR register access in one file also makes the "kernel owns all DMAR registers" decision from the spec visible in the source layout rather than only in a document.
 
