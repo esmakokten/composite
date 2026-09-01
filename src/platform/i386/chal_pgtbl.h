@@ -50,6 +50,29 @@ typedef enum {
 	x86_EPT_VM_DEF			= x86_EPT_READ_ACCESS | x86_EPT_WRITE_ACCCESS | x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE | x86_EPT_MEM_WB | x86_EPT_IGNORE_PAT_MEM_TYPE,
 } ept_pgtbl_flags_x86_t;
 
+/*
+ * VT-d second-level page table entries.  Structurally close to EPT --
+ * read/write/execute share bits 0/1/2 -- but deliberately NOT the same
+ * flag set: EPT's bits 5:3 carry a memory type and bit 6 is
+ * ignore-PAT, whereas in a VT-d second-level entry those bits are the
+ * extended memory type field, meaningful only when the unit reports
+ * extended memory type support.  Reusing x86_EPT_VM_DEF here would
+ * write an EMT the hardware may not accept, so the two are kept apart.
+ */
+typedef enum {
+	x86_VTD_SL_READ    = 1,
+	x86_VTD_SL_WRITE   = 1 << 1,
+	x86_VTD_SL_EXECUTE = 1 << 2,
+	x86_VTD_SL_SNOOP   = 1 << 11,
+
+	/*
+	 * Permissions are ANDed down the walk, so intermediate entries
+	 * must grant at least what the leaves do.
+	 */
+	x86_VTD_SL_INTERN_DEF = x86_VTD_SL_READ | x86_VTD_SL_WRITE | x86_VTD_SL_EXECUTE,
+	x86_VTD_SL_VM_DEF     = x86_VTD_SL_READ | x86_VTD_SL_WRITE | x86_VTD_SL_EXECUTE,
+} vtd_sl_pgtbl_flags_x86_t;
+
 /**
  * Use the passed in page, but make sure that we only use the passed
  * in page once.

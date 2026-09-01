@@ -1210,7 +1210,14 @@ cos_pgtbl_alloc(struct cos_compinfo *ci, u8_t type)
 
 	if (__alloc_mem_cap(ci, CAP_PGTBL, &kmem, &cap)) return 0;
 
-	if (unlikely(type)) lvl |= PGTBL_LVL_FLAG_VM;
+	/*
+	 * Map the type to its flag explicitly.  This used to be
+	 * "if (type) lvl |= PGTBL_LVL_FLAG_VM", which treated the type as
+	 * a boolean: any non-DEF type produced an EPT page table, so
+	 * asking for an IOMMU table would silently return an EPT one.
+	 */
+	if (type == PGTBL_TYPE_EPT) lvl |= PGTBL_LVL_FLAG_VM;
+	else if (type == PGTBL_TYPE_IOMMU) lvl |= PGTBL_LVL_FLAG_IOMMU;
 	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_PGTBLACTIVATE, cap, __compinfo_metacap(ci)->mi.pgtbl_cap, kmem, lvl))
 		BUG();
 

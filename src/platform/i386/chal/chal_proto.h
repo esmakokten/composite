@@ -8,8 +8,32 @@
 
 #define PGTBL_TYPE_DEF (0)
 #define PGTBL_TYPE_EPT (1)
-#define PGTBL_FLAG_EPT (0x80000000UL)
-#define PGTBL_FLAG_EPT_MASK (~PGTBL_FLAG_EPT)
+#define PGTBL_TYPE_IOMMU (2)
+
+/*
+ * The page-table type is passed to activation packed into the high bits
+ * of the level argument.  Two bits, so DEF/EPT/IOMMU all fit.  EPT keeps
+ * bit 31 -- its value when this was a single flag -- because user level
+ * names that same bit PGTBL_LVL_FLAG_VM in cos_kernel_api.h and passes
+ * it independently; moving it would silently mistype every VM page
+ * table.  0x2 << 30 == 0x80000000; check that before changing the shift.
+ */
+#define PGTBL_FLAG_TYPE_SHIFT (30)
+#define PGTBL_FLAG_TYPE_MASK (0x3UL << PGTBL_FLAG_TYPE_SHIFT)
+#define PGTBL_FLAG_EPT (0x2UL << PGTBL_FLAG_TYPE_SHIFT)
+#define PGTBL_FLAG_IOMMU (0x1UL << PGTBL_FLAG_TYPE_SHIFT)
+#define PGTBL_FLAG_EPT_MASK (~PGTBL_FLAG_TYPE_MASK)
+
+/*
+ * The EPT flag must stay on bit 31: user level names that same bit
+ * PGTBL_LVL_FLAG_VM (cos_kernel_api.h) and ORs it in independently, so
+ * moving it would silently build every VM page table as the wrong type.
+ * These catch that at compile time rather than at guest-boot time.
+ */
+COS_STATIC_ASSERT(PGTBL_FLAG_EPT == 0x80000000UL, "EPT pgtbl flag must remain bit 31");
+COS_STATIC_ASSERT(PGTBL_FLAG_EPT != PGTBL_FLAG_IOMMU, "pgtbl type flags must be distinct");
+COS_STATIC_ASSERT((PGTBL_FLAG_EPT | PGTBL_FLAG_IOMMU) == PGTBL_FLAG_TYPE_MASK,
+                  "pgtbl type flags must cover the type field exactly");
 
 #if defined(__x86_64__)
 #define PGTBL_ENTRY_ADDR_MASK 0xfffffffffffff000

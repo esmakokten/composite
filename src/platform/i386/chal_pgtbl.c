@@ -84,6 +84,12 @@ chal_vm_pgtbl_def_flag(void)
 	return x86_EPT_VM_DEF;
 }
 
+unsigned long
+chal_iommu_pgtbl_def_flag(void)
+{
+	return x86_VTD_SL_VM_DEF;
+}
+
 int
 chal_pgtbl_kmem_act(pgtbl_t pt, vaddr_t addr, unsigned long *kern_addr, unsigned long **pte_ret)
 {
@@ -247,10 +253,28 @@ chal_pgtbl_activate(struct captbl *t, unsigned long cap, unsigned long capin, pg
 	pt->parent       = NULL; /* new cap has no parent. only copied cap has. */
 	pt->lvl          = lvl & PGTBL_FLAG_EPT_MASK;
 
-	if (unlikely(lvl & PGTBL_FLAG_EPT)) {
+	switch (lvl & PGTBL_FLAG_TYPE_MASK) {
+	case PGTBL_FLAG_EPT:
 		pt->type = PGTBL_TYPE_EPT;
-	} else {
+		break;
+	case PGTBL_FLAG_IOMMU:
+		pt->type = PGTBL_TYPE_IOMMU;
+		break;
+	default:
 		pt->type = PGTBL_TYPE_DEF;
+		break;
+	}
+	/*
+	 * User level cannot read a page table's type back, so this is the
+	 * only evidence that a table was built as the type that was asked
+	 * for rather than silently falling back to another.  Regular page
+	 * tables are the overwhelming majority and uninteresting, so only
+	 * the rare typed ones are reported -- a full trace would add
+	 * hundreds of lines to every boot and bury real output on a
+	 * serial console.
+	 */
+	if (unlikely(pt->type != PGTBL_TYPE_DEF)) {
+		printk("pgtbl activate: type %u lvl %u\n", pt->type, (unsigned)pt->lvl);
 	}
 	__cap_capactivate_post(&pt->h, CAP_PGTBL);
 
@@ -683,7 +707,12 @@ chal_pgtbl_pgtblactivate(struct captbl *ct, capid_t cap, capid_t pt_entry, capid
 		curr_pt = cap_pt->pgtbl;
 		assert(curr_pt);
 
-		if (!(lvl & PGTBL_FLAG_EPT)) {
+		/*
+		 * Only a regular page table inherits the kernel's
+		 * mappings.  EPT and IOMMU roots start empty: neither a
+		 * guest nor a device may see kernel memory.
+		 */
+		if (!(lvl & PGTBL_FLAG_TYPE_MASK)) {
 			new_pt = pgtbl_create((void *)kmem_addr, curr_pt);
 		} else {
 			pgtbl_init_pte((void *)kmem_addr);
@@ -729,6 +758,8 @@ chal_pgtbl_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to, struct cap_pg
 
 	if (unlikely((((struct cap_pgtbl *)ctto)->type) == PGTBL_TYPE_EPT)) {
 		flags = chal_vm_pgtbl_def_flag();
+	} else if (unlikely((((struct cap_pgtbl *)ctto)->type) == PGTBL_TYPE_IOMMU)) {
+		flags = chal_iommu_pgtbl_def_flag();
 	} else {
 		/* sanitize the input flags */
 		flags = chal_pgtbl_flag_update(flags, flags_in);
@@ -773,6 +804,8 @@ chal_pgtbl_cons(struct cap_captbl *ct, struct cap_captbl *ctsub, capid_t expandi
 		new_pte |= X86_PGTBL_INTERN_DEF;
 	} else if (type == PGTBL_TYPE_EPT) {
 		new_pte |= x86_EPT_INTERN_DEF;
+	} else if (type == PGTBL_TYPE_IOMMU) {
+		new_pte |= x86_VTD_SL_INTERN_DEF;
 	} else {
 		/* Some error has occured in this cap! */
 		assert(0);

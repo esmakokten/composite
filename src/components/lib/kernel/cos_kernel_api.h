@@ -101,7 +101,9 @@ struct cos_compinfo {
 
 #define PGTBL_TYPE_DEF (0)
 #define PGTBL_TYPE_EPT (1)
+#define PGTBL_TYPE_IOMMU (2)
 #define PGTBL_LVL_FLAG_VM (1UL << 31)
+#define PGTBL_LVL_FLAG_IOMMU (1UL << 30)
 
 void cos_compinfo_init(struct cos_compinfo *ci, pgtblcap_t pgtbl_cap, captblcap_t captbl_cap, compcap_t comp_cap,
                        vaddr_t heap_ptr, capid_t cap_frontier, struct cos_compinfo *ci_resources);/*
