@@ -37,6 +37,26 @@ then
 	kvm_flag="-enable-kvm"
 fi
 
+# An "iommu" argument (in either the debug or nic position) switches the
+# machine type to q35 and attaches an emulated VT-d unit.  q35 is required:
+# the default "pc" machine has no IOMMU.  Interrupt remapping stays off --
+# Phase 1 is DMA remapping only -- but kernel-irqchip=split is what QEMU
+# documents for intel-iommu, so it is set unconditionally here.
+machine_flag=""
+iommu_opts=" -M q35,kernel-irqchip=split -device intel-iommu,intremap=off "
+
+if [ "${debug_flag}" == "iommu" ]
+then
+	debug_flag=""
+	machine_flag="${iommu_opts}"
+fi
+
+if [ "${nic_flag}" == "iommu" ]
+then
+	nic_flag=""
+	machine_flag="${iommu_opts}"
+fi
+
 if [ "${debug_flag}" == "debug" ]
 then
 	debug_flag="-S"
@@ -52,7 +72,7 @@ fi
 
 if [ "${arch}" == "x86_64" ]
 then
-	qemu-system-x86_64 ${kvm_flag} -cpu max -smp ${vcpus},cores=${num_cores},threads=${num_threads},sockets=${num_sockets} -m ${mem_size} -cdrom $1 -no-reboot -nographic -s ${debug_flag} -nic none ${nic_flag}
+	qemu-system-x86_64 ${kvm_flag} -cpu max ${machine_flag} -smp ${vcpus},cores=${num_cores},threads=${num_threads},sockets=${num_sockets} -m ${mem_size} -cdrom $1 -no-reboot -nographic -s ${debug_flag} -nic none ${nic_flag}
 elif [ "${arch}" == "i386" ]
 then
 	qemu-system-i386 ${kvm_flag} -cpu max -smp ${vcpus},cores=${num_cores},threads=${num_threads},sockets=${num_sockets} -m ${mem_size} -cdrom $1 -no-reboot -nographic -s ${debug_flag} ${nic_flag}
