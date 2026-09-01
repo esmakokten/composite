@@ -45,6 +45,21 @@
 #define RMRR_OFF_LIMIT   16 /* u64 */
 #define RMRR_OFF_SCOPE   24 /* device scope entries */
 
+/*
+ * Remapping unit register offsets, and the capability fields we decode.
+ * CAP and ECAP are 64-bit; VER is 32-bit.
+ */
+#define DMAR_REG_VER  0x00
+#define DMAR_REG_CAP  0x08
+#define DMAR_REG_ECAP 0x10
+
+#define CAP_ND(c)    ((u32_t)((c) & 0x7))          /* domains = 1 << (4 + 2*ND) */
+#define CAP_SAGAW(c) ((u8_t)(((c) >> 8) & 0x1f))   /* supported page-table depths */
+#define CAP_MGAW(c)  ((u8_t)(((c) >> 16) & 0x3f))  /* max guest address width - 1 */
+
+#define ECAP_C(e)  ((u8_t)((e) & 0x1))         /* page-walk coherency */
+#define ECAP_QI(e) ((u8_t)(((e) >> 1) & 0x1))  /* queued invalidation */
+
 /* Device scope entry. */
 #define SCOPE_OFF_TYPE      0 /* u8  */
 #define SCOPE_OFF_LEN       1 /* u8  */
@@ -65,6 +80,18 @@ static unsigned         rmrr_cnt;
 #define DMAR_RMRR_BDF_MAX 32
 static u16_t rmrr_bdfs[DMAR_RMRR_BDF_MAX];
 static unsigned rmrr_bdf_cnt;
+
+static u32_t
+dmar_read32(struct dmar_unit *u, unsigned off)
+{
+	return *(volatile u32_t *)((char *)u->regs + off);
+}
+
+static u64_t
+dmar_read64(struct dmar_unit *u, unsigned off)
+{
+	return *(volatile u64_t *)((char *)u->regs + off);
+}
 
 /* Unaligned little-endian reads: ACPI tables are packed, not aligned. */
 static u16_t
@@ -192,6 +219,35 @@ dmar_init(void)
 		p += len;
 	}
 
+	/*
+	 * Map each unit's registers and decode what the hardware can do.
+	 * PGTBL_NOCACHE because these are device registers, matching how
+	 * acpi_find_apic maps the LAPIC.
+	 */
+	for (i = 0; i < unit_cnt; i++) {
+		u64_t cap, ecap;
+		u32_t ver;
+
+		units[i].regs = device_map_mem(units[i].reg_base, PGTBL_NOCACHE);
+		assert(units[i].regs);
+
+		ver  = dmar_read32(&units[i], DMAR_REG_VER);
+		cap  = dmar_read64(&units[i], DMAR_REG_CAP);
+		ecap = dmar_read64(&units[i], DMAR_REG_ECAP);
+
+		units[i].ver_major      = (ver >> 4) & 0xf;
+		units[i].ver_minor      = ver & 0xf;
+		units[i].num_domains    = 1U << (4 + 2 * CAP_ND(cap));
+		units[i].max_addr_width = CAP_MGAW(cap) + 1;
+		units[i].sagaw          = CAP_SAGAW(cap);
+		units[i].qi_supported   = ECAP_QI(ecap);
+		units[i].coherent       = ECAP_C(ecap);
+
+		/* Raw values alongside the decode, so the decode is checkable. */
+		printk("DMAR: unit %u raw ver 0x%lx cap 0x%lx ecap 0x%lx\n", i, (unsigned long)ver,
+		       (unsigned long)cap, (unsigned long)ecap);
+	}
+
 	printk("DMAR: %u remapping unit(s), host address width %u\n", unit_cnt, host_addr_width);
 	for (i = 0; i < unit_cnt; i++) {
 		unsigned j;
@@ -203,7 +259,13 @@ dmar_init(void)
 			printk("DMAR:   scope %02x:%02x.%u\n", units[i].scope_bdf[j] >> 8,
 			       (units[i].scope_bdf[j] >> 3) & 0x1f, units[i].scope_bdf[j] & 0x7);
 		}
+		printk("DMAR: unit %u version %u.%u domains %u addr-width %u sagaw 0x%x qi %s coherent %s\n",
+		       i, units[i].ver_major, units[i].ver_minor, units[i].num_domains,
+		       units[i].max_addr_width, units[i].sagaw,
+		       units[i].qi_supported ? "yes" : "no", units[i].coherent ? "yes" : "no");
 	}
+
+	if (!dmar_hw_usable()) printk("DMAR: hardware unusable for the current design; IOMMU disabled\n");
 	for (i = 0; i < rmrr_cnt; i++) {
 		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
 		       (unsigned long)rmrrs[i].limit, rmrrs[i].segment);
@@ -222,6 +284,28 @@ dmar_unit_get(unsigned i)
 	if (i >= unit_cnt) return NULL;
 
 	return &units[i];
+}
+
+/*
+ * The lazy invalidation design pays its cost at retype by submitting an
+ * invalidation and waiting for it, which requires a queue.  A unit
+ * without queued invalidation needs a different design, so say so
+ * loudly at boot rather than failing mysteriously later.
+ */
+int
+dmar_hw_usable(void)
+{
+	unsigned i;
+
+	if (unit_cnt == 0) return 0;
+	for (i = 0; i < unit_cnt; i++) {
+		if (!units[i].qi_supported) {
+			printk("DMAR: unit %u lacks queued invalidation\n", i);
+			return 0;
+		}
+	}
+
+	return 1;
 }
 
 struct dmar_unit *

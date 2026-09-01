@@ -27,6 +27,15 @@ struct dmar_unit {
 	 */
 	u16_t   scope_bdf[DMAR_SCOPE_MAX];
 	u8_t    scope_cnt;
+
+	/* Decoded from the capability registers once regs is mapped. */
+	u8_t    ver_major;
+	u8_t    ver_minor;
+	u32_t   num_domains;    /* domain-id space of this unit          */
+	u8_t    max_addr_width; /* MGAW: widest address the unit accepts */
+	u8_t    sagaw;          /* bitmap of supported page-table depths */
+	u8_t    qi_supported;   /* queued invalidation                   */
+	u8_t    coherent;       /* hardware page walks are cache-coherent */
 };
 
 /*
@@ -46,5 +55,7 @@ struct dmar_unit *dmar_unit_get(unsigned i);
 /* The unit responsible for a device: scope match first, then include_all. */
 struct dmar_unit *dmar_unit_for_bdf(u16_t bdf);
 int               dmar_rmrr_covers(u16_t bdf);
+/* Non-zero when every unit supports what the design requires. */
+int               dmar_hw_usable(void);
 
 #endif /* DMAR_H */
