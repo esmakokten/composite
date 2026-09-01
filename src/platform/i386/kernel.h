@@ -67,6 +67,7 @@ void  acpi_set_rsdt_page(u32_t);
 void  kern_paging_map_init(void *pa);
 
 void *acpi_find_apic(void);
+void *acpi_find_dmar(void);
 void  acpi_shutdown(void);
 
 int   lapic_find_localaddr(void *l);

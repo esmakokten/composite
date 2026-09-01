@@ -46,6 +46,7 @@ KERNEL_CFILES += hpet.c
 KERNEL_CFILES += chal.c
 KERNEL_CFILES += boot_comp.c
 KERNEL_CFILES += miniacpi.c
+KERNEL_CFILES += dmar.c
 KERNEL_CFILES += exception.c
 KERNEL_CFILES += lapic.c
 KERNEL_CFILES += chal_pgtbl.c

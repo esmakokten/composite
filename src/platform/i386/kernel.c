@@ -1,5 +1,8 @@
 #include "assert.h"
 #include "kernel.h"
+#if defined(__x86_64__)
+#include "dmar.h"
+#endif
 #include "multiboot2.h"
 #include "string.h"
 #include "boot_comp.h"
@@ -173,6 +176,10 @@ kmain(unsigned long mboot_addr, unsigned long mboot_magic)
 	boot_state_transition(INIT_DATA_STRUCT, INIT_UT_MEM);
 
 	acpi_init();
+#if defined(__x86_64__)
+	/* VT-d is x86_64-only here; dmar.c is not built for i386. */
+	dmar_init();
+#endif
 	lapic_init();
 	timer_init();
 	boot_state_transition(INIT_UT_MEM, INIT_KMEM);

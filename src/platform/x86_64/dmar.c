@@ -1,0 +1,254 @@
+/*
+ * Parsing of the ACPI DMAR table: the description of the machine's
+ * VT-d remapping hardware.
+ *
+ * This file interprets one table and, later, owns the registers behind
+ * it.  Keeping all DMAR register access here makes the design decision
+ * that the kernel -- not a user-level component -- owns those registers
+ * visible in the source layout: a component that could write the root
+ * table address register would choose which translations the hardware
+ * consults, which is the whole authority this subsystem confines.
+ *
+ * Structure layouts follow "Intel Virtualization Technology for
+ * Directed I/O, Architecture Specification".  The offsets are gathered
+ * as named constants below so a reviewer can check them against the
+ * spec in one place rather than hunting through the walk.
+ */
+
+#include "kernel.h"
+#include "string.h"
+#include "dmar.h"
+
+/* DMAR table header, after the 36-byte ACPI system description header. */
+#define DMAR_OFF_HOST_ADDR_WIDTH 36 /* u8: host address width, minus one */
+#define DMAR_OFF_FLAGS           37 /* u8                                */
+#define DMAR_OFF_STRUCTS         48 /* first remapping structure         */
+
+/* Remapping structure types. */
+#define DMAR_TYPE_DRHD 0
+#define DMAR_TYPE_RMRR 1
+
+/* Common remapping structure header. */
+#define REMAP_OFF_TYPE 0 /* u16 */
+#define REMAP_OFF_LEN  2 /* u16 */
+
+/* DRHD structure. */
+#define DRHD_OFF_FLAGS    4  /* u8, bit 0 = INCLUDE_PCI_ALL */
+#define DRHD_OFF_SEGMENT  6  /* u16                         */
+#define DRHD_OFF_REGBASE  8  /* u64                         */
+#define DRHD_OFF_SCOPE    16 /* device scope entries        */
+#define DRHD_FLAG_INCLUDE_PCI_ALL 0x1
+
+/* RMRR structure. */
+#define RMRR_OFF_SEGMENT 6  /* u16 */
+#define RMRR_OFF_BASE    8  /* u64 */
+#define RMRR_OFF_LIMIT   16 /* u64 */
+#define RMRR_OFF_SCOPE   24 /* device scope entries */
+
+/* Device scope entry. */
+#define SCOPE_OFF_TYPE      0 /* u8  */
+#define SCOPE_OFF_LEN       1 /* u8  */
+#define SCOPE_OFF_START_BUS 5 /* u8  */
+#define SCOPE_OFF_PATH      6 /* pairs of (device, function) */
+#define SCOPE_HDR_LEN       6
+
+static struct dmar_unit units[DMAR_UNIT_MAX];
+static unsigned         unit_cnt;
+static struct dmar_rmrr rmrrs[DMAR_RMRR_MAX];
+static unsigned         rmrr_cnt;
+
+/*
+ * The device scopes of every RMRR, flattened into a list of BDFs.  We
+ * only ever ask "is this device covered", so the association back to a
+ * particular region is not worth keeping.
+ */
+#define DMAR_RMRR_BDF_MAX 32
+static u16_t rmrr_bdfs[DMAR_RMRR_BDF_MAX];
+static unsigned rmrr_bdf_cnt;
+
+/* Unaligned little-endian reads: ACPI tables are packed, not aligned. */
+static u16_t
+rd16(const u8_t *p)
+{
+	return (u16_t)p[0] | ((u16_t)p[1] << 8);
+}
+
+static u64_t
+rd64(const u8_t *p)
+{
+	u64_t v = 0;
+	int   i;
+
+	for (i = 7; i >= 0; i--) v = (v << 8) | p[i];
+
+	return v;
+}
+
+/*
+ * Walk a structure's device scope entries, appending the BDF of each
+ * into out[].  A scope names a device by its start bus plus a path of
+ * (device, function) pairs walked through bridges; the last pair is
+ * the device itself, which is the only part we need.
+ */
+static void
+dmar_scope_walk(const u8_t *p, const u8_t *end, u16_t *out, unsigned *cnt, unsigned max)
+{
+	while (p + SCOPE_HDR_LEN <= end) {
+		u8_t len = p[SCOPE_OFF_LEN];
+		u8_t bus = p[SCOPE_OFF_START_BUS];
+		int  npath;
+
+		if (len < SCOPE_HDR_LEN || p + len > end) break;
+
+		npath = (len - SCOPE_HDR_LEN) / 2;
+		if (npath > 0) {
+			const u8_t *last = p + SCOPE_OFF_PATH + (npath - 1) * 2;
+			u16_t       bdf  = ((u16_t)bus << 8) | ((last[0] & 0x1f) << 3) | (last[1] & 0x7);
+
+			if (*cnt >= max) {
+				printk("DMAR: device scope larger than the fixed bound\n");
+				assert(0);
+			}
+			out[(*cnt)++] = bdf;
+		}
+		p += len;
+	}
+}
+
+void
+dmar_init(void)
+{
+	const u8_t *tbl = acpi_find_dmar();
+	const u8_t *p, *end;
+	u32_t       tbl_len;
+	u8_t        host_addr_width;
+	unsigned    i;
+
+	if (!tbl) {
+		printk("DMAR: no table found; IOMMU unavailable\n");
+		return;
+	}
+
+	/* Table length lives at offset 4 of the ACPI header. */
+	tbl_len         = (u32_t)tbl[4] | ((u32_t)tbl[5] << 8) | ((u32_t)tbl[6] << 16) | ((u32_t)tbl[7] << 24);
+	host_addr_width = tbl[DMAR_OFF_HOST_ADDR_WIDTH] + 1;
+
+	p   = tbl + DMAR_OFF_STRUCTS;
+	end = tbl + tbl_len;
+
+
+	while (p + 4 <= end) {
+		u16_t type = rd16(p + REMAP_OFF_TYPE);
+		u16_t len  = rd16(p + REMAP_OFF_LEN);
+
+		/* A zero or overlong length would loop or run off the table. */
+		if (len < 4 || p + len > end) {
+			printk("DMAR: malformed remapping structure; stopping parse\n");
+			break;
+		}
+
+		switch (type) {
+		case DMAR_TYPE_DRHD: {
+			struct dmar_unit *u;
+
+			if (unit_cnt >= DMAR_UNIT_MAX) {
+				printk("DMAR: more units than DMAR_UNIT_MAX\n");
+				assert(0);
+			}
+			u              = &units[unit_cnt++];
+			u->reg_base    = (paddr_t)rd64(p + DRHD_OFF_REGBASE);
+			u->regs        = NULL;
+			u->segment     = rd16(p + DRHD_OFF_SEGMENT);
+			u->include_all = !!(p[DRHD_OFF_FLAGS] & DRHD_FLAG_INCLUDE_PCI_ALL);
+			u->scope_cnt   = 0;
+			{
+				unsigned n = 0;
+
+				dmar_scope_walk(p + DRHD_OFF_SCOPE, p + len, u->scope_bdf, &n, DMAR_SCOPE_MAX);
+				u->scope_cnt = (u8_t)n;
+			}
+			break;
+		}
+		case DMAR_TYPE_RMRR: {
+			struct dmar_rmrr *r;
+
+			if (rmrr_cnt >= DMAR_RMRR_MAX) {
+				printk("DMAR: more RMRRs than DMAR_RMRR_MAX\n");
+				assert(0);
+			}
+			r          = &rmrrs[rmrr_cnt++];
+			r->segment = rd16(p + RMRR_OFF_SEGMENT);
+			r->base    = (paddr_t)rd64(p + RMRR_OFF_BASE);
+			r->limit   = (paddr_t)rd64(p + RMRR_OFF_LIMIT);
+			dmar_scope_walk(p + RMRR_OFF_SCOPE, p + len, rmrr_bdfs, &rmrr_bdf_cnt,
+			                DMAR_RMRR_BDF_MAX);
+			break;
+		}
+		default:
+			/* Firmware may report structures we do not handle. */
+			break;
+		}
+
+		p += len;
+	}
+
+	printk("DMAR: %u remapping unit(s), host address width %u\n", unit_cnt, host_addr_width);
+	for (i = 0; i < unit_cnt; i++) {
+		unsigned j;
+
+		printk("DMAR: unit %u regs @ 0x%lx segment %u%s, %u scoped device(s)\n", i,
+		       (unsigned long)units[i].reg_base, units[i].segment,
+		       units[i].include_all ? " include-all" : "", units[i].scope_cnt);
+		for (j = 0; j < units[i].scope_cnt; j++) {
+			printk("DMAR:   scope %02x:%02x.%u\n", units[i].scope_bdf[j] >> 8,
+			       (units[i].scope_bdf[j] >> 3) & 0x1f, units[i].scope_bdf[j] & 0x7);
+		}
+	}
+	for (i = 0; i < rmrr_cnt; i++) {
+		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
+		       (unsigned long)rmrrs[i].limit, rmrrs[i].segment);
+	}
+}
+
+unsigned
+dmar_unit_count(void)
+{
+	return unit_cnt;
+}
+
+struct dmar_unit *
+dmar_unit_get(unsigned i)
+{
+	if (i >= unit_cnt) return NULL;
+
+	return &units[i];
+}
+
+struct dmar_unit *
+dmar_unit_for_bdf(u16_t bdf)
+{
+	unsigned i, j;
+	struct dmar_unit *catchall = NULL;
+
+	/* An explicit scope match wins over a catch-all unit. */
+	for (i = 0; i < unit_cnt; i++) {
+		for (j = 0; j < units[i].scope_cnt; j++) {
+			if (units[i].scope_bdf[j] == bdf) return &units[i];
+		}
+		if (units[i].include_all) catchall = &units[i];
+	}
+
+	return catchall;
+}
+
+int
+dmar_rmrr_covers(u16_t bdf)
+{
+	unsigned i;
+
+	for (i = 0; i < rmrr_bdf_cnt; i++) {
+		if (rmrr_bdfs[i] == bdf) return 1;
+	}
+
+	return 0;
+}

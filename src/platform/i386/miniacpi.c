@@ -218,6 +218,12 @@ acpi_find_apic(void)
 	return acpi_find_resource_flags("APIC", PGTBL_NOCACHE);
 }
 
+void *
+acpi_find_dmar(void)
+{
+	return acpi_find_resource("DMAR");
+}
+
 /*
  * Thanks to kaworu @ https://forum.osdev.org/viewtopic.php?t=16990
  * for shutdown code. For this structures layout, see 5.2.9 Fixed ACPI
