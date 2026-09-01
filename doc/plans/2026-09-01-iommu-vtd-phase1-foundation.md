@@ -696,6 +696,21 @@ flag translation beside the EPT set."
 
 ---
 
+## Outcome of Task 5's test, and what replaced it
+
+The component test drafted for Task 5 does not work and was removed. `cos_pgtbl_alloc`
+reaches `__mem_bump_alloc`, which asserts on the meta-capability: allocating a page
+table requires untyped memory, which only a component holding the boot untyped page
+table has. An ordinary test component gets memory through `memmgr` and cannot mint page
+tables at all. The one existing caller in the tree, `tests/unit_defcompinfo`, works by
+running as the booter, and no composition script builds it.
+
+Evidence for Task 5 is therefore: `COS_STATIC_ASSERT`s pinning the type encoding
+(verified to fire by changing the shift and watching the build fail), and a regression
+run showing `simple_vmm` still creates EPT page tables and reaches the same milestones
+as the pre-change baseline. Creating an IOMMU-typed table is left to the next plan's
+K5/K6, where the kernel does it — which is how the feature will actually be used.
+
 ## What this plan establishes for the next one
 
 On completion the kernel discovers the IOMMU, reports its capabilities, and can allocate IOMMU-typed page tables. The four open questions from the scope section will have answers: whether `q35` boots, which root table the firmware publishes, whether the units are coherent, and how many there are on the two-socket target.

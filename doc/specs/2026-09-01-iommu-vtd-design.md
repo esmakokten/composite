@@ -245,6 +245,43 @@ and, being two-socket, exercises multi-DRHD routing that QEMU will not.
 | Vendored DPDK lacks working `--iova-mode=va` | U3 stalls | Check the vendored version early; identity mapping is the fallback |
 | Mirroring hook races page-table updates | Correctness | Domain update inside the same critical section as the component mapping change |
 
+## Measured hardware facts
+
+Established by the foundation work on branch `iommu-vtd`, replacing the assumptions
+this spec was written under.
+
+| | QEMU `q35` + `intel-iommu` | Lab R740 (2x Xeon Platinum 8160) |
+|---|---|---|
+| Remapping units | 1 | **4** |
+| Register base | `0xfed90000` | `0x9d7fc000`, `0xaaffc000`, `0xb87fc000`, `0xc5ffc000` |
+| Version | 1.0 | 1.0 |
+| Domains | 65536 | 65536 |
+| Address width / SAGAW | 39-bit, 3-level (`0x2`) | **48-bit, 4-level (`0x4`)** |
+| Queued invalidation | yes | yes |
+| Page-walk coherency (ECAP.C) | **no** | **yes** |
+
+Four consequences.
+
+**Multi-unit routing is mandatory, not a refinement.** The R740 presents four units, and
+QEMU's single unit does not even set `INCLUDE_PCI_ALL` — it routes by explicit device
+scope. A device must be resolved to its owning unit before any invalidation is sent to
+it, since sending one to the wrong unit is silently wrong. `dmar_unit_for_bdf()` does
+this.
+
+**The two test environments exercise opposite coherency paths.** QEMU reports no
+page-walk coherency, so every write to a remapping structure must be flushed from the
+cache before the hardware reads it; the R740 reports coherency and needs no flush.
+Neither environment alone covers both paths, so the flush path must be conditional on
+`ECAP.C` and both settings must be exercised. This is fortunate rather than
+inconvenient: the harder path is the one QEMU forces, so it gets tested by default.
+
+**Page-table depth differs between environments.** Three levels under QEMU against four
+on hardware. Domain page tables must derive their depth from SAGAW rather than assuming
+the host's own paging depth.
+
+**Queued invalidation is available everywhere measured**, so the lazy-invalidation
+design in D4 has the mechanism it assumes on both.
+
 ## Phase 2 sketch
 
 Not designed here. It requires MSI and MSI-X capability parsing, an interrupt model
