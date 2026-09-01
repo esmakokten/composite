@@ -43,6 +43,8 @@ cd /home/esma/workspace/composite_main
 ./cos run <build-name> 2>&1 | tee /tmp/boot-<build-name>.log
 ```
 
+**Note on composition scripts:** 14 of the `.toml` files on `main`, `unit_memmgr.toml` among them, reference `sched.root_fprr`, which does not exist in this tree — only `sched.pfprr_quantum_static` does. Those compositions fail at the component-build stage. `unit_heap.toml` is used as the baseline here because it is small, memory-focused, and references the scheduler that exists. Any new `.toml` must do the same.
+
 A "test" for a kernel task is therefore a specific line the kernel must print at boot, asserted by grepping that log. This is weaker than a unit test and the plan does not pretend otherwise — but the order still holds: write the assertion, run it and watch it fail, implement, run it and watch it pass.
 
 For component-level tasks the repository does have a convention worth following: a `tests/unit_*` component that prints `SUCCESS:` or `FAILURE:` lines (see `src/components/implementation/tests/unit_memmgr/`), wired into a `.toml` in `composition_scripts/`.
@@ -83,7 +85,7 @@ Establish the baseline first, so that a later failure is attributable. Build and
 cd /home/esma/workspace/composite_main
 ./cos init x86_64
 ./cos build
-./cos compose composition_scripts/unit_memmgr.toml baseline
+./cos compose composition_scripts/unit_heap.toml baseline
 ./cos run baseline 2>&1 | tee /tmp/boot-baseline.log
 grep -c "SUCCESS" /tmp/boot-baseline.log
 ```
@@ -260,7 +262,7 @@ and identically in `acpi_find_resource_flags`, replacing its `entries` computati
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-./cos build && ./cos compose composition_scripts/unit_memmgr.toml baseline
+./cos build && ./cos compose composition_scripts/unit_heap.toml baseline
 ./cos run baseline iommu 2>&1 | tee /tmp/boot-q35.log
 grep -E "ACPI: root table is (RSDT|XSDT) with [0-9]+ entries" /tmp/boot-q35.log
 grep "DMAR" /tmp/boot-q35.log
@@ -403,7 +405,7 @@ Add `dmar.o` to the platform `Makefile` object list beside `miniacpi.o`.
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-./cos build && ./cos compose composition_scripts/unit_memmgr.toml baseline
+./cos build && ./cos compose composition_scripts/unit_heap.toml baseline
 ./cos run baseline iommu 2>&1 | tee /tmp/boot-q35.log
 grep "DMAR:" /tmp/boot-q35.log
 ```
@@ -484,7 +486,7 @@ Implement `dmar_hw_usable()` to return zero, with an explanatory printk, if any 
 - [ ] **Step 4: Run to verify it passes**
 
 ```bash
-./cos build && ./cos compose composition_scripts/unit_memmgr.toml baseline
+./cos build && ./cos compose composition_scripts/unit_heap.toml baseline
 ./cos run baseline iommu 2>&1 | tee /tmp/boot-q35.log
 grep "DMAR: unit" /tmp/boot-q35.log
 ```
@@ -568,7 +570,7 @@ LIBRARY_DEPENDENCIES =
 include Makefile.subsubdir
 ```
 
-And `composition_scripts/unit_iommu.toml`, copied from `unit_memmgr.toml` with the final component's `name` and `img` changed to `unit_iommu` and `tests.unit_iommu`.
+And `composition_scripts/unit_iommu.toml`, copied from **`unit_heap.toml`** with the final component's `name` and `img` changed to `unit_iommu` and `tests.unit_iommu`. Do not copy `unit_memmgr.toml` — it names a scheduler that does not exist in this tree and will not compose.
 
 - [ ] **Step 2: Run it to verify it fails**
 
@@ -669,7 +671,7 @@ Expected: both lines. The second is the one that matters — it proves the kerne
 Then confirm nothing regressed for the existing types — this task touched an encoding every page table in the system flows through, so a passing new test is not sufficient evidence:
 
 ```bash
-./cos compose composition_scripts/unit_memmgr.toml baseline
+./cos compose composition_scripts/unit_heap.toml baseline
 ./cos run baseline 2>&1 | grep -c SUCCESS
 ./cos compose composition_scripts/simple_vmm.toml vmmtest
 ./cos run vmmtest 2>&1 | tail -40
