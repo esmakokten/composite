@@ -36,7 +36,39 @@ struct rsdt {
 	u32_t        entry[0];
 } __attribute__((packed));
 
+/*
+ * The ACPI root table, which is either an RSDT (32-bit entry pointers)
+ * or an XSDT (64-bit).  ACPI 2.0+ firmware may publish only the XSDT,
+ * so we must handle both.  The two are identical apart from entry
+ * width, hence the accessors below rather than two copies of the walk.
+ */
 static struct rsdt *rsdt;
+static int          rsdt_is_xsdt;
+
+/*
+ * This file is shared between the i386 and x86_64 platforms (the
+ * latter symlinks it), and paddr_t is unsigned long -- 32 bits on
+ * i386.  A 64-bit XSDT entry cannot be represented there, so the
+ * 32-bit build stays RSDT-only exactly as it was, rather than
+ * silently truncating table addresses.
+ */
+static size_t
+acpi_sdt_entries(void)
+{
+	size_t entsz = rsdt_is_xsdt ? sizeof(u64_t) : sizeof(u32_t);
+
+	return (rsdt->head.len - sizeof(struct rsdt)) / entsz;
+}
+
+static paddr_t
+acpi_sdt_entry(size_t i)
+{
+#if defined(__x86_64__)
+	if (rsdt_is_xsdt) return (paddr_t)(((u64_t *)rsdt->entry)[i]);
+#endif
+
+	return (paddr_t)(((u32_t *)rsdt->entry)[i]);
+}
 
 void *
 acpi_find_rsdt(void)
@@ -50,8 +82,14 @@ acpi_find_rsdt(void)
 			struct rsdp * r   = (struct rsdp *)sig;
 			unsigned char sum = 0;
 			u32_t         i;
+			/*
+			 * Revision 0 RSDPs are 20 bytes and have no length
+			 * field; reading r->length there yields garbage,
+			 * and a zero would vacuously "pass" the checksum.
+			 */
+			u32_t         len = (r->revision >= 2) ? r->length : 20;
 
-			for (i = 0; i < r->length; i++) {
+			for (i = 0; i < len; i++) {
 				sum += sig[i];
 			}
 
@@ -66,10 +104,25 @@ acpi_find_rsdt(void)
 	}
 
 	if (!rsdp) return NULL;
-	printk("\tRDST paddr is @ %p\n", rsdp->rsdtaddress);
-	printk("\tRSDP lenth is :%u\n", rsdp->length);
-	printk("\tXSDT paddr is @ %p\n", rsdp->xsdtaddress);
-	rsdt_pa = (paddr_t)rsdp->rsdtaddress;
+	printk("\tRSDP revision %u, RSDT paddr @ 0x%lx, XSDT paddr @ 0x%llx\n",
+	       (unsigned)rsdp->revision, (unsigned long)rsdp->rsdtaddress,
+	       (unsigned long long)rsdp->xsdtaddress);
+
+	rsdt_is_xsdt = 0;
+	rsdt_pa      = (paddr_t)rsdp->rsdtaddress;
+
+#if defined(__x86_64__)
+	/*
+	 * Prefer the XSDT when the firmware offers one: ACPI 2.0+ may
+	 * publish no RSDT at all, and tables above 4GB are only
+	 * reachable through the XSDT's 64-bit entries.
+	 */
+	if (rsdp->revision >= 2 && rsdp->xsdtaddress) {
+		rsdt_is_xsdt = 1;
+		rsdt_pa      = (paddr_t)rsdp->xsdtaddress;
+	}
+#endif
+
 	return device_map_mem(rsdt_pa, 0);
 }
 
@@ -99,22 +152,24 @@ void
 acpi_iterate_tbs(void)
 {
 	size_t  i;
-	size_t entries = (rsdt->head.len - sizeof(struct rsdt)) / 4;
+	size_t entries = acpi_sdt_entries();
 
 	#define SDT_NAME_SZ 5
 	char name[SDT_NAME_SZ];
 
 	memset(name, 0, SDT_NAME_SZ);
 
-	printk("Supported System Description Tables\n");
+	printk("ACPI: root table is %s with %u entries\n",
+	       rsdt_is_xsdt ? "XSDT" : "RSDT", (unsigned)entries);
 	for (i = 0; i < entries; i++) {
-		struct rsdt *e = (struct rsdt *)device_pa2va(rsdt->entry[i]);
+		paddr_t      pa = acpi_sdt_entry(i);
+		struct rsdt *e  = (struct rsdt *)device_pa2va(pa);
 
 		if (!e) {
-			e = device_map_mem((u32_t)rsdt->entry[i], 0);
+			e = device_map_mem(pa, 0);
 			assert(e);
 		}
-		
+
 		memcpy(name, e->head.sig, SDT_NAME_SZ - 1);
 		printk("\t%s\n", name);
 	}
@@ -124,9 +179,11 @@ static void *
 acpi_find_resource_flags(const char *res_name, pgtbl_flags_t flags)
 {
 	size_t  i;
-	size_t entries = (rsdt->head.len - sizeof(struct rsdt)) / 4;
+	size_t entries = acpi_sdt_entries();
+
 	for (i = 0; i < entries; i++) {
-		struct rsdt *e = (struct rsdt *)device_pa2va(rsdt->entry[i]);
+		paddr_t      pa = acpi_sdt_entry(i);
+		struct rsdt *e  = (struct rsdt *)device_pa2va(pa);
 
 		if (!e) {
 			/*
@@ -134,7 +191,7 @@ acpi_find_resource_flags(const char *res_name, pgtbl_flags_t flags)
 			 * as the resources should be on the same
 			 * super-page as the parent rsdt.
 			 */
-			e = device_map_mem((u32_t)rsdt->entry[i], flags);
+			e = device_map_mem(pa, flags);
 			assert(e);
 		}
 		if (!acpi_chk_header(e, res_name)) return e;
