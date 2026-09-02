@@ -11,6 +11,14 @@
 #define DMAR_UNIT_MAX 8
 #define DMAR_RMRR_MAX 16
 #define DMAR_SCOPE_MAX 16
+/*
+ * Context tables are one page per PCI bus.  Allocating all 256 per unit
+ * would cost a megabyte of BSS each, so only buses that actually carry
+ * devices get one.  A device on a bus without a context table is
+ * blocked by the hardware, which shows up as a recorded fault rather
+ * than silence -- see dmar_translation_enable().
+ */
+#define DMAR_CTXT_MAX 4
 
 /* A DRHD: one hardware remapping unit and the register set behind it. */
 struct dmar_unit {
@@ -48,6 +56,12 @@ struct dmar_unit {
 	void   *iq;      /* invalidation queue, page-aligned */
 	u32_t   iq_tail; /* next free descriptor index       */
 	u8_t    qi_on;
+
+	/* Root table, and the per-bus context tables it points at. */
+	void   *root;
+	u8_t    ctxt_bus[DMAR_CTXT_MAX];
+	u8_t    ctxt_cnt;
+	u8_t    translating;
 };
 
 /*
@@ -66,6 +80,8 @@ void              dmar_flush_cache(struct dmar_unit *u, void *addr, unsigned lon
 int               dmar_qi_init(struct dmar_unit *u);
 int               dmar_inv_context_global(struct dmar_unit *u);
 int               dmar_inv_iotlb_global(struct dmar_unit *u);
+
+int               dmar_translation_enable(struct dmar_unit *u);
 
 void              dmar_init(void);
 unsigned          dmar_unit_count(void);

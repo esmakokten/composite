@@ -96,6 +96,26 @@
  */
 #define DMAR_POLL_MAX 1000000
 
+/* Root table pointer, and the commands that install and enable it. */
+#define DMAR_REG_RTADDR 0x20
+#define GCMD_SRTP (1UL << 30) /* set root table pointer */
+#define GSTS_RTPS (1UL << 30)
+#define GCMD_TE (1UL << 31) /* translation enable */
+#define GSTS_TES (1UL << 31)
+
+/*
+ * Root and context entries are both 128 bits.  A root entry is present
+ * plus a context table pointer; a context entry is present plus a
+ * translation type, a second-level pointer, an address width and a
+ * domain id.
+ */
+#define ROOT_PRESENT (1ULL << 0)
+#define CTXT_PRESENT (1ULL << 0)
+#define CTXT_TT_SHIFT 2
+#define CTXT_TT_PASSTHROUGH (0x2ULL << CTXT_TT_SHIFT)
+#define CTXT_AW_SHIFT 0
+#define CTXT_DID_SHIFT 8
+
 /* Device scope entry. */
 
 /* Device scope entry. */
@@ -112,6 +132,8 @@
  * for the same reason the unit and RMRR arrays are.
  */
 static u8_t iq_pages[DMAR_UNIT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+static u8_t root_pages[DMAR_UNIT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+static u8_t ctxt_pages[DMAR_UNIT_MAX][DMAR_CTXT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 
 /* Status word an invalidation-wait descriptor writes on completion. */
 static volatile u32_t iq_wait_status[DMAR_UNIT_MAX] __attribute__((aligned(CACHE_LINE)));
@@ -251,6 +273,45 @@ dmar_qi_submit_wait(struct dmar_unit *u, u64_t d0, u64_t d1)
 	printk("DMAR: unit %u invalidation queue timed out\n", idx);
 
 	return -1;
+}
+
+/*
+ * The address width a context entry must declare, derived from what the
+ * unit supports rather than from the host's own paging depth: QEMU
+ * offers three levels and the R740 four.  SAGAW bit i encodes address
+ * width field i, so the widest supported is the highest set bit.
+ */
+static u8_t
+dmar_unit_aw(struct dmar_unit *u)
+{
+	int i;
+
+	for (i = 4; i >= 0; i--) {
+		if (u->sagaw & (1 << i)) return (u8_t)i;
+	}
+	/* dmar_hw_usable() should have rejected a unit supporting nothing. */
+	assert(0);
+
+	return 0;
+}
+
+/* The context table for a bus, allocated from this unit's pool on demand. */
+static u64_t *
+dmar_ctxt_for_bus(struct dmar_unit *u, u8_t bus)
+{
+	unsigned idx = (unsigned)(u - units);
+	unsigned i;
+
+	for (i = 0; i < u->ctxt_cnt; i++) {
+		if (u->ctxt_bus[i] == bus) return (u64_t *)&ctxt_pages[idx][i][0];
+	}
+	if (u->ctxt_cnt >= DMAR_CTXT_MAX) return NULL;
+
+	i                 = u->ctxt_cnt++;
+	u->ctxt_bus[i]    = bus;
+	memset(&ctxt_pages[idx][i][0], 0, PAGE_SIZE);
+
+	return (u64_t *)&ctxt_pages[idx][i][0];
 }
 
 int
@@ -455,11 +516,106 @@ dmar_init(void)
 			continue;
 		}
 		printk("DMAR: unit %u global context+iotlb invalidation ok\n", i);
+
+		units[i].root = &root_pages[i][0];
+		dmar_translation_enable(&units[i]);
 	}
 	for (i = 0; i < rmrr_cnt; i++) {
 		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
 		       (unsigned long)rmrrs[i].limit, rmrrs[i].segment);
 	}
+}
+
+/*
+ * Install a root table in which every device is set to pass-through,
+ * then turn translation on.  Pass-through means a device addresses
+ * memory exactly as it does with the IOMMU off, so this proves the
+ * tables and the register programming are right while changing nothing
+ * observable.  Real domains come next.
+ *
+ * The ordering is not stylistic: the tables must be written and flushed
+ * before the root pointer is installed, and the caches invalidated
+ * before translation is enabled.
+ */
+int
+dmar_translation_enable(struct dmar_unit *u)
+{
+	unsigned idx = (unsigned)(u - units);
+	u64_t   *root = (u64_t *)u->root;
+	u8_t     aw   = dmar_unit_aw(u);
+	unsigned i, b;
+	u8_t     buses[DMAR_CTXT_MAX];
+	unsigned nbuses = 0;
+
+	memset(root, 0, PAGE_SIZE);
+
+	/*
+	 * Bus 0 always, plus any bus this unit's device scope names.  A
+	 * device on a bus with no context table has no present root entry
+	 * and is blocked; that is visible as a fault, not as silence.
+	 */
+	buses[nbuses++] = 0;
+	for (i = 0; i < u->scope_cnt; i++) {
+		u8_t bus = (u8_t)(u->scope_bdf[i] >> 8);
+
+		for (b = 0; b < nbuses; b++) {
+			if (buses[b] == bus) break;
+		}
+		if (b == nbuses && nbuses < DMAR_CTXT_MAX) buses[nbuses++] = bus;
+	}
+
+	for (b = 0; b < nbuses; b++) {
+		u64_t *ctxt = dmar_ctxt_for_bus(u, buses[b]);
+
+		if (!ctxt) {
+			printk("DMAR: unit %u out of context tables at bus %u\n", idx, buses[b]);
+			return -1;
+		}
+		for (i = 0; i < 256; i++) {
+			ctxt[i * 2]     = CTXT_PRESENT | CTXT_TT_PASSTHROUGH;
+			ctxt[i * 2 + 1] = ((u64_t)aw << CTXT_AW_SHIFT);
+		}
+		dmar_flush_cache(u, ctxt, PAGE_SIZE);
+
+		root[buses[b] * 2]     = ROOT_PRESENT | (u64_t)chal_va2pa(ctxt);
+		root[buses[b] * 2 + 1] = 0;
+	}
+	dmar_flush_cache(u, root, PAGE_SIZE);
+
+	dmar_write64(u, DMAR_REG_RTADDR, (u64_t)chal_va2pa(root));
+	if (dmar_gcmd_set(u, GCMD_SRTP, GSTS_RTPS, 1)) {
+		printk("DMAR: unit %u timed out setting root table pointer\n", idx);
+		return -1;
+	}
+
+	if (dmar_inv_context_global(u) || dmar_inv_iotlb_global(u)) {
+		printk("DMAR: unit %u invalidation failed before enabling translation\n", idx);
+		return -1;
+	}
+
+	{
+		/*
+		 * Print global status either side of the enable.  The poll
+		 * succeeding only shows a bit we chose is set; showing it
+		 * change from clear to set is what makes the claim that
+		 * translation is on checkable rather than assumed.
+		 */
+		u32_t before = dmar_read32(u, DMAR_REG_GSTS);
+		u32_t after;
+
+		if (dmar_gcmd_set(u, GCMD_TE, GSTS_TES, 1)) {
+			printk("DMAR: unit %u timed out enabling translation\n", idx);
+			return -1;
+		}
+		after = dmar_read32(u, DMAR_REG_GSTS);
+		printk("DMAR: unit %u gsts 0x%lx -> 0x%lx\n", idx, (unsigned long)before,
+		       (unsigned long)after);
+	}
+	u->translating = 1;
+	printk("DMAR: unit %u translation enabled (pass-through default), aw %u, %u bus table(s)\n",
+	       idx, aw, u->ctxt_cnt);
+
+	return 0;
 }
 
 unsigned
