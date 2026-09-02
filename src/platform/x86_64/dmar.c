@@ -60,12 +60,61 @@
 #define ECAP_C(e)  ((u8_t)((e) & 0x1))         /* page-walk coherency */
 #define ECAP_QI(e) ((u8_t)(((e) >> 1) & 0x1))  /* queued invalidation */
 
+/* Global command / status, and the invalidation queue registers. */
+#define DMAR_REG_GCMD 0x18
+#define DMAR_REG_GSTS 0x1c
+#define DMAR_REG_IQH  0x80
+#define DMAR_REG_IQT  0x88
+#define DMAR_REG_IQA  0x90
+
+#define GCMD_QIE (1UL << 26) /* queued invalidation enable */
+#define GSTS_QIES (1UL << 26)
+
+/*
+ * Invalidation descriptors are 16 bytes.  A one-page queue holds 256 of
+ * them, which is the smallest size the queue address register encodes
+ * (QS == 0) and far more than boot-time invalidation needs.
+ */
+#define IQ_DESC_SZ    16
+#define IQ_DESC_COUNT (PAGE_SIZE / IQ_DESC_SZ)
+
+#define IQ_TYPE_CC_INV (0x1) /* context cache invalidate */
+#define IQ_TYPE_IOTLB  (0x2) /* IOTLB invalidate         */
+#define IQ_TYPE_WAIT   (0x5) /* invalidation wait        */
+
+#define IQ_GRAN_GLOBAL (0x1UL << 4)
+#define IQ_IOTLB_DW    (1UL << 6) /* drain writes */
+#define IQ_IOTLB_DR    (1UL << 7) /* drain reads  */
+#define IQ_WAIT_SW     (1UL << 5) /* write status on completion */
+#define IQ_WAIT_FN     (1UL << 6) /* fence: order against prior descriptors */
+
+/*
+ * Every poll of a hardware status bit is bounded.  A wrong register
+ * offset or bit position must surface as a reported failure at boot,
+ * not as a machine that stops responding -- these constants are taken
+ * from a specification and the code has to survive getting one wrong.
+ */
+#define DMAR_POLL_MAX 1000000
+
+/* Device scope entry. */
+
 /* Device scope entry. */
 #define SCOPE_OFF_TYPE      0 /* u8  */
 #define SCOPE_OFF_LEN       1 /* u8  */
 #define SCOPE_OFF_START_BUS 5 /* u8  */
 #define SCOPE_OFF_PATH      6 /* pairs of (device, function) */
 #define SCOPE_HDR_LEN       6
+
+/*
+ * Remapping structures live in kernel BSS.  There is no allocator this
+ * early in boot, and the hardware needs a stable physical address for
+ * each, which chal_va2pa gives us for kernel data.  Bounded statically
+ * for the same reason the unit and RMRR arrays are.
+ */
+static u8_t iq_pages[DMAR_UNIT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+
+/* Status word an invalidation-wait descriptor writes on completion. */
+static volatile u32_t iq_wait_status[DMAR_UNIT_MAX] __attribute__((aligned(CACHE_LINE)));
 
 static struct dmar_unit units[DMAR_UNIT_MAX];
 static unsigned         unit_cnt;
@@ -85,6 +134,135 @@ static u32_t
 dmar_read32(struct dmar_unit *u, unsigned off)
 {
 	return *(volatile u32_t *)((char *)u->regs + off);
+}
+
+static void
+dmar_write32(struct dmar_unit *u, unsigned off, u32_t v)
+{
+	*(volatile u32_t *)((char *)u->regs + off) = v;
+}
+
+static void
+dmar_write64(struct dmar_unit *u, unsigned off, u64_t v)
+{
+	*(volatile u64_t *)((char *)u->regs + off) = v;
+}
+
+/*
+ * Issue one global command and wait for the matching status bit.  The
+ * command register carries every enable at once, so it is written from
+ * a shadow rather than read back.
+ */
+static int
+dmar_gcmd_set(struct dmar_unit *u, u32_t cmd_bit, u32_t sts_bit, int set)
+{
+	unsigned long n = 0;
+
+	if (set) u->gcmd_shadow |= cmd_bit;
+	else     u->gcmd_shadow &= ~cmd_bit;
+
+	dmar_write32(u, DMAR_REG_GCMD, u->gcmd_shadow);
+
+	while (n++ < DMAR_POLL_MAX) {
+		u32_t sts = dmar_read32(u, DMAR_REG_GSTS);
+
+		if (set  &&  (sts & sts_bit)) return 0;
+		if (!set && !(sts & sts_bit)) return 0;
+	}
+
+	return -1;
+}
+
+void
+dmar_flush_cache(struct dmar_unit *u, void *addr, unsigned long sz)
+{
+	char *p;
+
+	/* A coherent unit reads what the CPU wrote; nothing to do. */
+	if (u->coherent) return;
+
+	for (p = (char *)addr; p < (char *)addr + sz; p += CACHE_LINE) {
+		__asm__ volatile("clflush (%0)" : : "r"(p) : "memory");
+	}
+	__asm__ volatile("sfence" ::: "memory");
+}
+
+int
+dmar_qi_init(struct dmar_unit *u)
+{
+	unsigned idx = (unsigned)(u - units);
+
+	if (!u->qi_supported) return -1;
+
+	u->iq      = &iq_pages[idx][0];
+	u->iq_tail = 0;
+	memset(u->iq, 0, PAGE_SIZE);
+	dmar_flush_cache(u, u->iq, PAGE_SIZE);
+
+	/* Queue address, with size field 0 meaning 256 descriptors. */
+	dmar_write64(u, DMAR_REG_IQA, (u64_t)chal_va2pa(u->iq));
+	dmar_write32(u, DMAR_REG_IQT, 0);
+
+	if (dmar_gcmd_set(u, GCMD_QIE, GSTS_QIES, 1)) {
+		printk("DMAR: unit %u timed out enabling queued invalidation\n", idx);
+		return -1;
+	}
+	u->qi_on = 1;
+	printk("DMAR: unit %u queued invalidation enabled\n", idx);
+
+	return 0;
+}
+
+/*
+ * Submit one descriptor followed by an invalidation-wait descriptor, and
+ * spin until the wait's status write lands.  The spin is bounded: a
+ * wedged queue is a reported failure, never a hung machine.
+ */
+static int
+dmar_qi_submit_wait(struct dmar_unit *u, u64_t d0, u64_t d1)
+{
+	unsigned idx = (unsigned)(u - units);
+	u64_t   *q   = (u64_t *)u->iq;
+	unsigned long n = 0;
+	u32_t    slot, wslot;
+
+	if (!u->qi_on) return -1;
+
+	slot  = u->iq_tail;
+	wslot = (slot + 1) % IQ_DESC_COUNT;
+
+	q[slot * 2]     = d0;
+	q[slot * 2 + 1] = d1;
+
+	iq_wait_status[idx] = 0;
+	/* Fence so the wait cannot complete before the work it follows. */
+	q[wslot * 2]     = IQ_TYPE_WAIT | IQ_WAIT_SW | IQ_WAIT_FN | (1ULL << 32);
+	q[wslot * 2 + 1] = (u64_t)chal_va2pa((void *)&iq_wait_status[idx]);
+
+	dmar_flush_cache(u, &q[slot * 2], 2 * IQ_DESC_SZ);
+
+	u->iq_tail = (wslot + 1) % IQ_DESC_COUNT;
+	dmar_write32(u, DMAR_REG_IQT, u->iq_tail * IQ_DESC_SZ);
+
+	while (n++ < DMAR_POLL_MAX) {
+		if (iq_wait_status[idx] == 1) return 0;
+	}
+
+	printk("DMAR: unit %u invalidation queue timed out\n", idx);
+
+	return -1;
+}
+
+int
+dmar_inv_context_global(struct dmar_unit *u)
+{
+	return dmar_qi_submit_wait(u, IQ_TYPE_CC_INV | IQ_GRAN_GLOBAL, 0);
+}
+
+int
+dmar_inv_iotlb_global(struct dmar_unit *u)
+{
+	return dmar_qi_submit_wait(u, IQ_TYPE_IOTLB | IQ_GRAN_GLOBAL | IQ_IOTLB_DW | IQ_IOTLB_DR, 0);
 }
 
 static u64_t
@@ -265,7 +443,19 @@ dmar_init(void)
 		       units[i].qi_supported ? "yes" : "no", units[i].coherent ? "yes" : "no");
 	}
 
-	if (!dmar_hw_usable()) printk("DMAR: hardware unusable for the current design; IOMMU disabled\n");
+	if (!dmar_hw_usable()) {
+		printk("DMAR: hardware unusable for the current design; IOMMU disabled\n");
+		return;
+	}
+
+	for (i = 0; i < unit_cnt; i++) {
+		if (dmar_qi_init(&units[i])) continue;
+		if (dmar_inv_context_global(&units[i]) || dmar_inv_iotlb_global(&units[i])) {
+			printk("DMAR: unit %u global invalidation FAILED\n", i);
+			continue;
+		}
+		printk("DMAR: unit %u global context+iotlb invalidation ok\n", i);
+	}
 	for (i = 0; i < rmrr_cnt; i++) {
 		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
 		       (unsigned long)rmrrs[i].limit, rmrrs[i].segment);

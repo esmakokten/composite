@@ -36,6 +36,18 @@ struct dmar_unit {
 	u8_t    sagaw;          /* bitmap of supported page-table depths */
 	u8_t    qi_supported;   /* queued invalidation                   */
 	u8_t    coherent;       /* hardware page walks are cache-coherent */
+
+	/*
+	 * The global command register is write-only in effect: writing it
+	 * issues whatever commands its set bits name, so the other enables
+	 * must be preserved.  Shadow what we have asked for.
+	 */
+	u32_t   gcmd_shadow;
+
+	/* Queued invalidation state; queue is one page of descriptors. */
+	void   *iq;      /* invalidation queue, page-aligned */
+	u32_t   iq_tail; /* next free descriptor index       */
+	u8_t    qi_on;
 };
 
 /*
@@ -48,6 +60,12 @@ struct dmar_rmrr {
 	paddr_t base;
 	paddr_t limit;
 };
+
+/* Cache maintenance for remapping structures; no-op on a coherent unit. */
+void              dmar_flush_cache(struct dmar_unit *u, void *addr, unsigned long sz);
+int               dmar_qi_init(struct dmar_unit *u);
+int               dmar_inv_context_global(struct dmar_unit *u);
+int               dmar_inv_iotlb_global(struct dmar_unit *u);
 
 void              dmar_init(void);
 unsigned          dmar_unit_count(void);
