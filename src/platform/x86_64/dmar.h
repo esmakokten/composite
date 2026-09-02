@@ -86,6 +86,8 @@ int               dmar_inv_iotlb_global(struct dmar_unit *u);
 int               dmar_translation_enable(struct dmar_unit *u);
 /* Drain recorded faults, printing each.  Returns how many were consumed. */
 int               dmar_fault_poll(struct dmar_unit *u);
+/* Point a device at a second-level page table instead of pass-through. */
+int               dmar_domain_bind(struct dmar_unit *u, u16_t bdf, paddr_t sl_root, u16_t did);
 
 void              dmar_init(void);
 unsigned          dmar_unit_count(void);

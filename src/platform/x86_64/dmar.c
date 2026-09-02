@@ -97,6 +97,7 @@
  * from a specification and the code has to survive getting one wrong.
  */
 #define DMAR_POLL_MAX 1000000
+#define DMA_POLL_MAX 10000000
 
 /*
  * Fault status, and the layout of one 128-bit fault recording register.
@@ -113,6 +114,29 @@
 #define FRCD_IS_READ(hi) ((u8_t)(((hi) >> 62) & 0x1))
 #define FRCD_VALID(hi)  ((u8_t)(((hi) >> 63) & 0x1))
 #define FRCD_VALID_BIT  (1ULL << 63)
+
+/*
+ * QEMU's "edu" educational PCI device.  It exists here for one reason:
+ * a booted Composite system issues no DMA of its own -- the SATA
+ * controller goes idle once firmware has read the image, and unit_heap
+ * has no drivers -- so without a controllable DMA source, "the device
+ * was blocked" and "the device never tried" are indistinguishable.
+ * The edu card's DMA engine is four register writes.
+ */
+#define EDU_VENDOR 0x1234
+#define EDU_DEVICE 0x11e8
+#define EDU_DMA_SRC 0x80
+#define EDU_DMA_DST 0x88
+#define EDU_DMA_CNT 0x90
+#define EDU_DMA_CMD 0x98
+#define EDU_DMA_START (1UL << 0)
+#define EDU_DMA_FROM_DEVICE (1UL << 1)
+#define EDU_BUF_BASE 0x40000 /* the card's own DMA buffer */
+
+/* PCI configuration space, the legacy port pair. */
+#define PCI_CFG_ADDR 0xcf8
+#define PCI_CFG_DATA 0xcfc
+#define PCI_CMD_BUS_MASTER (1UL << 2)
 
 /* Root table pointer, and the commands that install and enable it. */
 #define DMAR_REG_RTADDR 0x20
@@ -152,6 +176,17 @@
 static u8_t iq_pages[DMAR_UNIT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 static u8_t root_pages[DMAR_UNIT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 static u8_t ctxt_pages[DMAR_UNIT_MAX][DMAR_CTXT_MAX][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+
+/*
+ * An all-zero second-level page table: a domain that maps nothing.  Any
+ * DMA by a device bound to it must fault.
+ */
+static u8_t empty_domain_root[PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+
+/* Target of the self-test's DMA, pre-filled with a known pattern. */
+static volatile u8_t dma_target[PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+
+static void dmar_selftest(struct dmar_unit *u);
 
 /* Status word an invalidation-wait descriptor writes on completion. */
 static volatile u32_t iq_wait_status[DMAR_UNIT_MAX] __attribute__((aligned(CACHE_LINE)));
@@ -542,6 +577,7 @@ dmar_init(void)
 		units[i].root = &root_pages[i][0];
 		dmar_translation_enable(&units[i]);
 		dmar_fault_poll(&units[i]);
+		if (i == 0) dmar_selftest(&units[i]);
 	}
 	for (i = 0; i < rmrr_cnt; i++) {
 		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
@@ -684,6 +720,148 @@ dmar_fault_poll(struct dmar_unit *u)
 	}
 
 	return n;
+}
+
+int
+dmar_domain_bind(struct dmar_unit *u, u16_t bdf, paddr_t sl_root, u16_t did)
+{
+	u64_t   *ctxt  = dmar_ctxt_for_bus(u, (u8_t)(bdf >> 8));
+	unsigned devfn = bdf & 0xff;
+
+	if (!ctxt) return -1;
+	if (dmar_rmrr_covers(bdf)) {
+		/*
+		 * Firmware requires this device's reserved regions be
+		 * identity mapped.  Phase 1 does not honour them, so
+		 * binding would break the device silently.
+		 */
+		printk("DMAR: refusing to bind %02x:%02x.%u, covered by an RMRR\n", bdf >> 8,
+		       (bdf >> 3) & 0x1f, bdf & 0x7);
+		return -1;
+	}
+
+	/* Translation type 00b: second level only. */
+	ctxt[devfn * 2]     = CTXT_PRESENT | ((u64_t)sl_root & ~0xfffULL);
+	ctxt[devfn * 2 + 1] = ((u64_t)dmar_unit_aw(u) << CTXT_AW_SHIFT) | ((u64_t)did << CTXT_DID_SHIFT);
+	dmar_flush_cache(u, &ctxt[devfn * 2], 16);
+
+	if (dmar_inv_context_global(u) || dmar_inv_iotlb_global(u)) return -1;
+
+	printk("DMAR: bound %02x:%02x.%u to domain %u\n", bdf >> 8, (bdf >> 3) & 0x1f, bdf & 0x7, did);
+
+	return 0;
+}
+
+static u32_t
+pci_cfg_read(u8_t bus, u8_t devfn, u8_t reg)
+{
+	u32_t addr = (1UL << 31) | ((u32_t)bus << 16) | ((u32_t)devfn << 8) | (reg & 0xfc);
+
+	__asm__ volatile("outl %0, %w1" : : "a"(addr), "d"((u16_t)PCI_CFG_ADDR));
+	__asm__ volatile("inl %w1, %0" : "=a"(addr) : "d"((u16_t)PCI_CFG_DATA));
+
+	return addr;
+}
+
+static void
+pci_cfg_write(u8_t bus, u8_t devfn, u8_t reg, u32_t v)
+{
+	u32_t addr = (1UL << 31) | ((u32_t)bus << 16) | ((u32_t)devfn << 8) | (reg & 0xfc);
+
+	__asm__ volatile("outl %0, %w1" : : "a"(addr), "d"((u16_t)PCI_CFG_ADDR));
+	__asm__ volatile("outl %0, %w1" : : "a"(v), "d"((u16_t)PCI_CFG_DATA));
+}
+
+/* Returns the edu card's devfn on bus 0, or -1. */
+static int
+edu_find(void)
+{
+	unsigned devfn;
+
+	for (devfn = 0; devfn < 256; devfn++) {
+		u32_t id = pci_cfg_read(0, (u8_t)devfn, 0);
+
+		if ((id & 0xffff) == EDU_VENDOR && ((id >> 16) & 0xffff) == EDU_DEVICE) return (int)devfn;
+	}
+
+	return -1;
+}
+
+/*
+ * Ask the edu card to DMA a page from its own buffer into RAM at
+ * dma_target's physical address, and report whether the memory changed.
+ * The target is pre-filled with a pattern the card's zeroed buffer will
+ * overwrite, so "did the DMA land" is a direct memory comparison rather
+ * than an inference from the absence of a fault.
+ */
+static int
+edu_dma_try(void *bar0, paddr_t dst)
+{
+	unsigned long n = 0;
+
+	memset((void *)dma_target, 0xaa, PAGE_SIZE);
+	__asm__ volatile("mfence" ::: "memory");
+
+	*(volatile u64_t *)((char *)bar0 + EDU_DMA_SRC) = EDU_BUF_BASE;
+	*(volatile u64_t *)((char *)bar0 + EDU_DMA_DST) = (u64_t)dst;
+	*(volatile u64_t *)((char *)bar0 + EDU_DMA_CNT) = PAGE_SIZE;
+	*(volatile u64_t *)((char *)bar0 + EDU_DMA_CMD) = EDU_DMA_START | EDU_DMA_FROM_DEVICE;
+
+	/* Bounded: a blocked DMA may simply never complete. */
+	while (n++ < DMA_POLL_MAX) {
+		if (!(*(volatile u64_t *)((char *)bar0 + EDU_DMA_CMD) & EDU_DMA_START)) break;
+	}
+	__asm__ volatile("mfence" ::: "memory");
+
+	return dma_target[0] != 0xaa; /* non-zero: memory was written */
+}
+
+/*
+ * The falsification experiment for the containment claim, run in both
+ * directions so the negative result means something: under pass-through
+ * the DMA must land, and under a domain that maps nothing it must not.
+ * A test that only ever shows "no DMA" would pass just as well against
+ * a device that never tried.
+ */
+static void
+dmar_selftest(struct dmar_unit *u)
+{
+	int      devfn = edu_find();
+	u32_t    bar0_lo;
+	void    *bar0;
+	paddr_t  target_pa = (paddr_t)chal_va2pa((void *)dma_target);
+	u16_t    bdf;
+	int      wrote;
+
+	if (devfn < 0) {
+		printk("DMAR: no edu device; skipping DMA containment self-test\n");
+		return;
+	}
+	bdf = (u16_t)devfn;
+
+	bar0_lo = pci_cfg_read(0, (u8_t)devfn, 0x10) & ~0xfUL;
+	bar0    = device_map_mem((paddr_t)bar0_lo, PGTBL_NOCACHE);
+	assert(bar0);
+
+	/* Bus mastering must be on or the card cannot issue DMA at all. */
+	pci_cfg_write(0, (u8_t)devfn, 0x04, pci_cfg_read(0, (u8_t)devfn, 0x04) | PCI_CMD_BUS_MASTER);
+
+	printk("DMAR: self-test using edu at 00:%02x.%u, bar0 0x%lx, target pa 0x%lx\n",
+	       (devfn >> 3) & 0x1f, devfn & 0x7, (unsigned long)bar0_lo, (unsigned long)target_pa);
+
+	wrote = edu_dma_try(bar0, target_pa);
+	printk("DMAR: self-test pass-through: memory %s\n", wrote ? "WRITTEN (expected)" : "untouched (UNEXPECTED)");
+	dmar_fault_poll(u);
+
+	/* Now put the card in a domain that maps nothing. */
+	memset(empty_domain_root, 0, PAGE_SIZE);
+	dmar_flush_cache(u, empty_domain_root, PAGE_SIZE);
+	if (dmar_domain_bind(u, bdf, (paddr_t)chal_va2pa(empty_domain_root), 1)) return;
+
+	wrote = edu_dma_try(bar0, target_pa);
+	printk("DMAR: self-test empty domain: memory %s\n",
+	       wrote ? "WRITTEN (CONTAINMENT FAILED)" : "untouched (expected)");
+	dmar_fault_poll(u);
 }
 
 unsigned

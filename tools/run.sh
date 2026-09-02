@@ -43,7 +43,11 @@ fi
 # Phase 1 is DMA remapping only -- but kernel-irqchip=split is what QEMU
 # documents for intel-iommu, so it is set unconditionally here.
 machine_flag=""
-iommu_opts=" -M q35,kernel-irqchip=split -device intel-iommu,intremap=off "
+# The "edu" device is QEMU's educational PCI card: it has a programmable
+# DMA engine, which gives a controllable DMA source for testing that the
+# IOMMU actually blocks what it is supposed to block.  Nothing else in a
+# booted Composite system issues DMA.
+iommu_opts=" -M q35,kernel-irqchip=split -device intel-iommu,intremap=off -device edu "
 
 if [ "${debug_flag}" == "iommu" ]
 then
