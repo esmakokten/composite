@@ -42,6 +42,8 @@ struct dmar_unit {
 	u32_t   num_domains;    /* domain-id space of this unit          */
 	u8_t    max_addr_width; /* MGAW: widest address the unit accepts */
 	u8_t    sagaw;          /* bitmap of supported page-table depths */
+	u16_t   fault_off;      /* byte offset of the fault records      */
+	u8_t    fault_num;      /* how many fault recording registers    */
 	u8_t    qi_supported;   /* queued invalidation                   */
 	u8_t    coherent;       /* hardware page walks are cache-coherent */
 
@@ -82,6 +84,8 @@ int               dmar_inv_context_global(struct dmar_unit *u);
 int               dmar_inv_iotlb_global(struct dmar_unit *u);
 
 int               dmar_translation_enable(struct dmar_unit *u);
+/* Drain recorded faults, printing each.  Returns how many were consumed. */
+int               dmar_fault_poll(struct dmar_unit *u);
 
 void              dmar_init(void);
 unsigned          dmar_unit_count(void);

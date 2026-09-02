@@ -56,6 +56,8 @@
 #define CAP_ND(c)    ((u32_t)((c) & 0x7))          /* domains = 1 << (4 + 2*ND) */
 #define CAP_SAGAW(c) ((u8_t)(((c) >> 8) & 0x1f))   /* supported page-table depths */
 #define CAP_MGAW(c)  ((u8_t)(((c) >> 16) & 0x3f))  /* max guest address width - 1 */
+#define CAP_FRO(c)   ((u16_t)(((c) >> 24) & 0x3ff)) /* fault record offset, in 16B units */
+#define CAP_NFR(c)   ((u8_t)((((c) >> 40) & 0xff) + 1)) /* number of fault records */
 
 #define ECAP_C(e)  ((u8_t)((e) & 0x1))         /* page-walk coherency */
 #define ECAP_QI(e) ((u8_t)(((e) >> 1) & 0x1))  /* queued invalidation */
@@ -95,6 +97,22 @@
  * from a specification and the code has to survive getting one wrong.
  */
 #define DMAR_POLL_MAX 1000000
+
+/*
+ * Fault status, and the layout of one 128-bit fault recording register.
+ * The high word carries the source id, the reason, a read/write bit and
+ * the valid bit; the low word carries the faulting address.  The valid
+ * bit is write-one-to-clear.
+ */
+#define DMAR_REG_FSTS 0x34
+#define FSTS_PPF (1UL << 1) /* primary pending fault */
+#define FSTS_PFO (1UL << 0) /* primary fault overflow */
+
+#define FRCD_SID(hi)    ((u16_t)((hi) & 0xffff))
+#define FRCD_REASON(hi) ((u8_t)(((hi) >> 32) & 0xff))
+#define FRCD_IS_READ(hi) ((u8_t)(((hi) >> 62) & 0x1))
+#define FRCD_VALID(hi)  ((u8_t)(((hi) >> 63) & 0x1))
+#define FRCD_VALID_BIT  (1ULL << 63)
 
 /* Root table pointer, and the commands that install and enable it. */
 #define DMAR_REG_RTADDR 0x20
@@ -481,6 +499,8 @@ dmar_init(void)
 		units[i].sagaw          = CAP_SAGAW(cap);
 		units[i].qi_supported   = ECAP_QI(ecap);
 		units[i].coherent       = ECAP_C(ecap);
+		units[i].fault_off      = CAP_FRO(cap) * 16;
+		units[i].fault_num      = CAP_NFR(cap);
 
 		/* Raw values alongside the decode, so the decode is checkable. */
 		printk("DMAR: unit %u raw ver 0x%lx cap 0x%lx ecap 0x%lx\n", i, (unsigned long)ver,
@@ -502,6 +522,8 @@ dmar_init(void)
 		       i, units[i].ver_major, units[i].ver_minor, units[i].num_domains,
 		       units[i].max_addr_width, units[i].sagaw,
 		       units[i].qi_supported ? "yes" : "no", units[i].coherent ? "yes" : "no");
+		printk("DMAR: unit %u %u fault record(s) at register offset 0x%x\n", i,
+		       units[i].fault_num, units[i].fault_off);
 	}
 
 	if (!dmar_hw_usable()) {
@@ -519,6 +541,7 @@ dmar_init(void)
 
 		units[i].root = &root_pages[i][0];
 		dmar_translation_enable(&units[i]);
+		dmar_fault_poll(&units[i]);
 	}
 	for (i = 0; i < rmrr_cnt; i++) {
 		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
@@ -616,6 +639,51 @@ dmar_translation_enable(struct dmar_unit *u)
 	       idx, aw, u->ctxt_cnt);
 
 	return 0;
+}
+
+/*
+ * Drain the fault recording registers.  Polled rather than interrupt
+ * driven: fault reporting by interrupt needs MSI, and external
+ * interrupts here are capped at the legacy 32-63 range.  Faults name
+ * the device, because "a fault happened" is not actionable.
+ */
+int
+dmar_fault_poll(struct dmar_unit *u)
+{
+	unsigned idx = (unsigned)(u - units);
+	unsigned i;
+	int      n = 0;
+	u32_t    fsts;
+
+	if (!u->regs || !u->fault_num) return 0;
+
+	fsts = dmar_read32(u, DMAR_REG_FSTS);
+
+	for (i = 0; i < u->fault_num; i++) {
+		unsigned off = u->fault_off + i * 16;
+		u64_t    hi  = dmar_read64(u, off + 8);
+		u64_t    lo;
+		u16_t    sid;
+
+		if (!FRCD_VALID(hi)) continue;
+
+		lo  = dmar_read64(u, off);
+		sid = FRCD_SID(hi);
+		printk("DMAR: fault %02x:%02x.%u %s @ 0x%lx reason 0x%x\n", sid >> 8, (sid >> 3) & 0x1f,
+		       sid & 0x7, FRCD_IS_READ(hi) ? "read" : "write", (unsigned long)lo,
+		       FRCD_REASON(hi));
+
+		/* Valid bit is write-one-to-clear. */
+		dmar_write64(u, off + 8, FRCD_VALID_BIT);
+		n++;
+	}
+
+	if (fsts & (FSTS_PPF | FSTS_PFO)) dmar_write32(u, DMAR_REG_FSTS, fsts);
+	if (n == 0 && !(fsts & (FSTS_PPF | FSTS_PFO))) {
+		printk("DMAR: unit %u fault status clean\n", idx);
+	}
+
+	return n;
 }
 
 unsigned
