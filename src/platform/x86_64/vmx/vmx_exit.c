@@ -74,7 +74,27 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	//struct thread *thd = thd_current(cos_cpu_local_info());
 
 	/*
-	 * The fast-path excursion ends here. vmx_vmcall_fast_handler set
+	 * INVARIANT: this function must never return.
+	 *
+	 * It is not merely that the vmresume below makes returning pointless.
+	 * Correctness of the IA32_KERNEL_GSBASE elimination depends on it.
+	 * entry.S has three swapgs, not two:
+	 *
+	 *   :58 sysenter_entry, on kernel entry
+	 *   :64 sysenter_entry, on the normal syscall return
+	 *   :92 restore_from_vm, before sysretq into the component
+	 *
+	 * The errand path executes exactly :92 and :58, and those two exchanges
+	 * cancel, which is why the guest's KERNEL_GS_BASE round-trips without any
+	 * software save or restore. :64 stays unreachable on that path only
+	 * because the errand return enters composite_syscall_handler and leaves
+	 * through here, never returning to the instruction after the call.
+	 *
+	 * If this function is ever made to return, :64 executes, the exchange
+	 * stops balancing, and the guest's GS shadow is silently corrupted --
+	 * with no assertion to catch it.
+	 *
+	 * The fast-path excursion also ends here. vmx_vmcall_fast_handler set
 	 * state to VM_THD_STATE_VMCALL_FAST on the way in and nothing else
 	 * clears it, so without this the next scheduler-driven resume
 	 * (vmx_thd_start_or_resume -> vmx_resume) trips the
