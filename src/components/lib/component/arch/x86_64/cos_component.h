@@ -254,6 +254,12 @@ get_stk_data(int offset)
 
 #define GET_CURR_CPU cos_cpuid()
 
+/*
+ * NOTE: this reads IA32_TSC_AUX. The vmcall fast path no longer saves or
+ * restores TSC_AUX, so after an errand the register holds the *guest's*
+ * value, not a Composite core id. Do not use this to obtain a core id --
+ * cos_cpuid() takes it from the thread stack instead.
+ */
 static inline u64_t
 cos_rdtscp(coreid_t *coreid, u16_t *numaid)
 {
@@ -273,11 +279,20 @@ cos_cpuid(void)
 #if NUM_CPU == 1
 	return 0;
 #endif
-	coreid_t coreid;
-	u16_t    numaid;
-	cos_rdtscp(&coreid, &numaid);
-
-	return (long)coreid;
+	/*
+	 * Take the core id from the thread stack, the same way cos_get_thd_id()
+	 * takes the thread id, and the same way ARM already does it. This used
+	 * to execute RDTSCP, which reads IA32_TSC_AUX -- a register the vmcall
+	 * fast path no longer preserves across an errand, so on a multicore
+	 * build a component could read the guest's value and silently corrupt
+	 * per-core state.
+	 *
+	 * Verified on hardware with NUM_CPU=2: the CPUID_OFFSET slot matched
+	 * both the core id the scheduler passed in and RDTSCP on both cores,
+	 * while the THDID_OFFSET slot carried the thread id with zero in bits
+	 * 31:16.
+	 */
+	return get_stk_data(CPUID_OFFSET);
 }
 
 static inline coreid_t

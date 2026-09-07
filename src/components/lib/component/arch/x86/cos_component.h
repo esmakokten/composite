@@ -182,6 +182,12 @@ get_stk_data(int offset)
 
 #define GET_CURR_CPU cos_cpuid()
 
+/*
+ * NOTE: this reads IA32_TSC_AUX. The vmcall fast path no longer saves or
+ * restores TSC_AUX, so after an errand the register holds the *guest's*
+ * value, not a Composite core id. Do not use this to obtain a core id --
+ * cos_cpuid() takes it from the thread stack instead.
+ */
 static inline u32_t
 __rdpid(void)
 {
@@ -198,7 +204,9 @@ cos_cpuid(void)
 #if NUM_CPU == 1
 	return 0;
 #endif
-	return __rdpid();
+	/* See the x86_64 version: RDPID reads IA32_TSC_AUX, which the vmcall
+	 * fast path no longer preserves. Take the core id from the stack. */
+	return get_stk_data(CPUID_OFFSET);
 }
 
 static inline coreid_t
