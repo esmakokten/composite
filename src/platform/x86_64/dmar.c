@@ -17,6 +17,7 @@
 
 #include "kernel.h"
 #include "string.h"
+#include "chal_pgtbl.h"
 #include "dmar.h"
 
 /* DMAR table header, after the 36-byte ACPI system description header. */
@@ -186,7 +187,57 @@ static u8_t empty_domain_root[PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 /* Target of the self-test's DMA, pre-filled with a known pattern. */
 static volatile u8_t dma_target[PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
 
+/*
+ * A second-level page table for the self-test, deep enough for the
+ * widest address width either target reports: four levels on the R740,
+ * three under QEMU.  Index 0 is the root the context entry points at.
+ */
+static u8_t dom_tbl[4][PAGE_SIZE] __attribute__((aligned(PAGE_SIZE)));
+
 static void dmar_selftest(struct dmar_unit *u);
+static u8_t dmar_unit_aw(struct dmar_unit *u);
+
+/*
+ * Build a second-level page table mapping exactly one page, and return
+ * its root physical address.
+ *
+ * This exists to exercise the VT-d entry format itself.  A domain that
+ * maps nothing cannot distinguish "correctly blocks everything" from
+ * "entry bits are wrong, so nothing is ever readable" -- both look
+ * identical from outside.  Writing a real entry and requiring the DMA
+ * through it to land is what tests x86_VTD_SL_VM_DEF and
+ * x86_VTD_SL_INTERN_DEF rather than assuming them.
+ *
+ * Levels come from the unit's address width: aw 1 is 39-bit and three
+ * levels, aw 2 is 48-bit and four.  Nine index bits per level.
+ */
+static paddr_t
+dmar_build_mapping(struct dmar_unit *u, paddr_t target, u64_t iova)
+{
+	unsigned levels = dmar_unit_aw(u) + 2;
+	unsigned i;
+
+	assert(levels >= 2 && levels <= 4);
+	for (i = 0; i < levels; i++) memset(dom_tbl[i], 0, PAGE_SIZE);
+
+	/*
+	 * Walk down from the root, linking each level to the next.  Every
+	 * intermediate entry must grant at least what the leaf does:
+	 * permissions are ANDed along the walk.
+	 */
+	for (i = 0; i + 1 < levels; i++) {
+		unsigned shift = 12 + 9 * (levels - 1 - i);
+		unsigned idx   = (unsigned)((iova >> shift) & 0x1ff);
+
+		((u64_t *)dom_tbl[i])[idx] = (u64_t)chal_va2pa(dom_tbl[i + 1]) | x86_VTD_SL_INTERN_DEF;
+	}
+	((u64_t *)dom_tbl[levels - 1])[(unsigned)((iova >> 12) & 0x1ff)] =
+	  ((u64_t)target & ~0xfffULL) | x86_VTD_SL_VM_DEF;
+
+	for (i = 0; i < levels; i++) dmar_flush_cache(u, dom_tbl[i], PAGE_SIZE);
+
+	return (paddr_t)chal_va2pa(dom_tbl[0]);
+}
 
 /* Status word an invalidation-wait descriptor writes on completion. */
 static volatile u32_t iq_wait_status[DMAR_UNIT_MAX] __attribute__((aligned(CACHE_LINE)));
@@ -862,6 +913,29 @@ dmar_selftest(struct dmar_unit *u)
 	printk("DMAR: self-test empty domain: memory %s\n",
 	       wrote ? "WRITTEN (CONTAINMENT FAILED)" : "untouched (expected)");
 	dmar_fault_poll(u);
+
+	/*
+	 * Third phase: a domain that maps one page.  DMA to the mapped
+	 * address must land, and DMA one page past it must not.  The first
+	 * half is what validates the entry format; the second confirms the
+	 * domain is genuinely selective rather than wide open.
+	 */
+	{
+		u64_t   iova = 0;
+		paddr_t root = dmar_build_mapping(u, target_pa, iova);
+
+		if (dmar_domain_bind(u, bdf, root, 2)) return;
+
+		wrote = edu_dma_try(bar0, (paddr_t)iova);
+		printk("DMAR: self-test mapped page (iova 0x%lx): memory %s\n", (unsigned long)iova,
+		       wrote ? "WRITTEN (expected)" : "untouched (TRANSLATION BROKEN)");
+		dmar_fault_poll(u);
+
+		wrote = edu_dma_try(bar0, (paddr_t)(iova + PAGE_SIZE));
+		printk("DMAR: self-test unmapped neighbour: memory %s\n",
+		       wrote ? "WRITTEN (CONTAINMENT FAILED)" : "untouched (expected)");
+		dmar_fault_poll(u);
+	}
 }
 
 unsigned
