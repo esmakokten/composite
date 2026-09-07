@@ -2,6 +2,20 @@
 #include "chal_asm_inc.h"
 #include "multiboot2.h"
 
+/*
+ * Selectors for the TEMPORARY boot GDTs in this file (gdt_table for the BSP,
+ * smpgdt for APs). Both are three entries -- null, code, data -- and are
+ * replaced by the real per-CPU GDT that gdt_init()/flush_selectors() install.
+ *
+ * They are deliberately NOT the SEL_* symbols from chal_asm_inc.h. Those index
+ * the C GDT, whose layout now follows Linux's (kernel CS 0x10, kernel DS 0x18)
+ * so that IA32_STAR matches a Linux guest. Using them here would index past
+ * these three-entry tables: SEL_KDSEG 0x18 is beyond smpgdt's limit of 23,
+ * and SEL_KCSEG 0x10 would select the data descriptor as code.
+ */
+#define BOOTGDT_KCSEG 0x08
+#define BOOTGDT_KDSEG 0x10
+
 /* multiboot2 header must be contained completely within the first 32768 bytes of the OS image, and must be 64-bit aligned */
 .section .text
 multiboot_start:
@@ -240,12 +254,12 @@ smploader:
 	orl     $CR0_PE, %eax
 	movl    %eax, %cr0
 
-	ljmpl    $(SEL_KCSEG), $RELOCATE_ADDR(smpstart32)
+	ljmpl    $(BOOTGDT_KCSEG), $RELOCATE_ADDR(smpstart32)
 
 .align 0x10
 .code32
 smpstart32:
-	movw    $(SEL_KDSEG), %ax
+	movw    $(BOOTGDT_KDSEG), %ax
 	movw    %ax, %ds
 	movw    %ax, %es
 	movw    %ax, %ss
