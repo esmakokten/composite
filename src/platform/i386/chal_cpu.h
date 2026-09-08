@@ -288,7 +288,12 @@ chal_cpu_init(void)
 	writemsr(MSR_IA32_EFER, low | 0x1, high);
 
 	writemsr(MSR_STAR, 0, SEL_KCSEG | ((SEL_UCSEG - 16) << 16));
-	writemsr(MSR_LSTAR, (u32_t)((u64_t)sysenter_entry), (u32_t)((u64_t)sysenter_entry >> 32));
+	/*
+	 * SYSCALL enters at the fixed-VA trampoline, not directly at
+	 * sysenter_entry, so that LSTAR holds a value a Linux guest can share.
+	 * The trampoline is built and mapped in kern_setup_image().
+	 */
+	writemsr(MSR_LSTAR, (u32_t)COS_SYSCALL_TRAMP_VA, (u32_t)(COS_SYSCALL_TRAMP_VA >> 32));
 	/*
 	 * RFLAGS bits SYSCALL clears on entry to the kernel. This is Linux's
 	 * mask (arch/x86/kernel/cpu/common.c syscall_init):

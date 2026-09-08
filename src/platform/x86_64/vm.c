@@ -19,6 +19,63 @@ u64_t boot_comp_pgd[PAGE_SIZE / sizeof(u64_t)] PAGE_ALIGNED = {0};
 
 u64_t boot_comp_pgt1[PAGE_SIZE / sizeof(u64_t)] PAGE_ALIGNED = {0};
 
+/*
+ * SYSCALL trampoline: one page at COS_SYSCALL_TRAMP_VA, reached through its own
+ * PUD/PMD/PT chain hanging off PGD index 509. The kernel proper is mapped with
+ * 1G super-pages at the PUD level, which cannot express a single page, so this
+ * VA gets a full four-level walk of its own.
+ */
+u64_t tramp_pud[PAGE_SIZE / sizeof(u64_t)] PAGE_ALIGNED = {0};
+u64_t tramp_pmd[PAGE_SIZE / sizeof(u64_t)] PAGE_ALIGNED = {0};
+u64_t tramp_pte[PAGE_SIZE / sizeof(u64_t)] PAGE_ALIGNED = {0};
+u8_t  tramp_page[PAGE_SIZE] PAGE_ALIGNED = {0};
+
+/*
+ * Build the trampoline and map it.
+ *
+ * The jump must clobber no register: SYSCALL arrives with the user register
+ * file live and RAX holding the syscall number, so a movabs into a register
+ * would destroy it. A RIP-relative indirect jump through an address stored in
+ * the same page touches nothing:
+ *
+ *	ff 25 00 00 00 00	jmp *0x0(%rip)
+ *	<8 bytes>		absolute address of sysenter_entry
+ *
+ * The displacement is 0 because RIP already points at the address slot.
+ *
+ * The PTE is deliberately not writable. Two caveats, both hardware facts on
+ * this part rather than choices:
+ *   - execute-only would need PKS, and CPUID.(EAX=7,ECX=0):ECX[31] is 0 on the
+ *     Xeon 8160, so R+X is the floor for a supervisor page here;
+ *   - CR0.WP is never set by loader.S on x86_64, so supervisor writes bypass
+ *     the read-only bit anyway. The bit is set for when that changes.
+ */
+static void
+tramp_setup(void)
+{
+	u64_t target = (u64_t)sysenter_entry;
+
+	tramp_page[0] = 0xff;		/* jmp *disp32(%rip) */
+	tramp_page[1] = 0x25;
+	tramp_page[2] = 0x00;
+	tramp_page[3] = 0x00;
+	tramp_page[4] = 0x00;
+	tramp_page[5] = 0x00;
+	*(u64_t *)&tramp_page[6] = target;
+
+	tramp_pte[COS_TRAMP_PTE_IDX] = (u64_t)chal_va2pa(tramp_page)
+	                             | X86_PGTBL_PRESENT | X86_PGTBL_GLOBAL;
+	tramp_pmd[COS_TRAMP_PMD_IDX] = (u64_t)chal_va2pa(tramp_pte)
+	                             | X86_PGTBL_PRESENT | X86_PGTBL_WRITABLE;
+	tramp_pud[COS_TRAMP_PUD_IDX] = (u64_t)chal_va2pa(tramp_pmd)
+	                             | X86_PGTBL_PRESENT | X86_PGTBL_WRITABLE;
+	boot_comp_pgd[COS_TRAMP_PGD_IDX] = (u64_t)chal_va2pa(tramp_pud)
+	                                 | X86_PGTBL_PRESENT | X86_PGTBL_WRITABLE;
+
+	printk("\tSYSCALL trampoline at %p -> sysenter_entry %p\n",
+	       (void *)COS_SYSCALL_TRAMP_VA, (void *)target);
+}
+
 u64_t boot_ap_pgd[PAGE_SIZE / sizeof(u64_t)] PAGE_ALIGNED = {[0] = 0 | X86_PGTBL_PRESENT | X86_PGTBL_WRITABLE | X86_PGTBL_SUPER,
                                                              [KERN_INIT_PGD_IDX] = 0 | X86_PGTBL_PRESENT | X86_PGTBL_WRITABLE
                                                                                      | X86_PGTBL_SUPER};
@@ -82,6 +139,8 @@ kern_setup_image(void)
 	boot_comp_pgd[0] = 0; /* unmap lower addresses */
 
 	kernel_mapped_offset = i / PGT1_RANGE;
+
+	tramp_setup();
 
 	chal_cpu_init();
 	chal_cpu_pgtbl_activate((pgtbl_t)chal_va2pa(boot_comp_pgd));

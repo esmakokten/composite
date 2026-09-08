@@ -49,3 +49,28 @@
 
 #define KERNEL_STACK_OFFSET 0
 #define USER_STACK_OFFSET 8
+/*
+ * Virtual address of the SYSCALL entry trampoline page.
+ *
+ * IA32_LSTAR holds this value permanently, so that it is identical on both
+ * sides of a VM crossing and the vmcall fast path never has to swap it: the
+ * active address space does the routing. In Composite this page holds a jump
+ * to sysenter_entry; in a Linux guest the hypervisor installs a page holding a
+ * jump to entry_SYSCALL_64. Nothing is shared -- different page tables,
+ * different physical frames, only the number in common.
+ *
+ * PGD index 509. That is deliberately >= Linux's KERNEL_PGD_BOUNDARY (273), so
+ * Linux's own clone_pgd_range() in pgd_ctor() propagates the entry into every
+ * process for free. The slot is the -3 gap between cpu_entry_area (-4) and the
+ * espfix stacks (-2); Linux defines no PGD constant for it, and a ptdump of a
+ * booted kernel shows the whole 512G unmapped at PGD level. It is also above
+ * "vaddr_end for KASLR", so pinning it leaks nothing about the randomised
+ * layout.
+ */
+#define COS_SYSCALL_TRAMP_VA	0xfffffe8000000000UL
+
+/* Page-table indices for that VA: 509 / 0 / 0 / 0. */
+#define COS_TRAMP_PGD_IDX	509
+#define COS_TRAMP_PUD_IDX	0
+#define COS_TRAMP_PMD_IDX	0
+#define COS_TRAMP_PTE_IDX	0
