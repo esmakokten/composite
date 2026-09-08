@@ -25,18 +25,29 @@
 #define TRAMP_PGD_IDX         509     /* (VA >> 39) & 511 */
 
 /*
- * Frames for the trampoline and its page-table chain, taken from the window
- * the guest's own e820 reports as reserved:
- *   [mem 0x000000000009e000-0x00000000000fffff] reserved
- * That memory is backed by the VMM's contiguous guest RAM but Linux will never
- * allocate from it, which matters because this intercept fires from
- * syscall_init() (init/main.c:992) -- before mm_init() at 993, so the guest has
- * no page allocator yet and every frame must come from us.
+ * Frames for the trampoline and its page-table chain, taken from guest-physical
+ * memory the VMM has mapped but never told the guest about. The VM is created
+ * with GUEST_MEM_SZ (310MB), while the memory map the guest is handed ends much
+ * earlier:
+ *
+ *   BIOS-e820: [mem 0x0000000000000000-0x000000000009dfff] usable
+ *   BIOS-e820: [mem 0x000000000009e000-0x00000000000fffff] reserved
+ *   BIOS-e820: [mem 0x0000000000100000-0x0000000003cfffff] usable
+ *
+ * so everything above 0x3cfffff is backed and EPT-mapped but outside every
+ * range Linux knows about. That matters twice over. First, this intercept fires
+ * from syscall_init() (init/main.c:992), before mm_init() at 993, so the guest
+ * has no page allocator and every frame must come from us. Second, the frame is
+ * mapped execute-only in EPT, so the guest must never READ it either -- and the
+ * e820 "reserved" window below 1MB is not good enough for that: it is the BIOS
+ * ROM and DMI area, which Linux scans at boot (dmi_scan_machine from
+ * setup_arch), taking an EPT violation. Memory the guest was never told about
+ * is not probed at all.
  */
-#define TRAMP_GPA_PAGE  0x000f0000ULL
-#define TRAMP_GPA_PUD   0x000f1000ULL
-#define TRAMP_GPA_PMD   0x000f2000ULL
-#define TRAMP_GPA_PT    0x000f3000ULL
+#define TRAMP_GPA_PAGE  0x04000000ULL
+#define TRAMP_GPA_PUD   0x04001000ULL
+#define TRAMP_GPA_PMD   0x04002000ULL
+#define TRAMP_GPA_PT    0x04003000ULL
 
 #define PTE_P  (1ULL << 0)
 #define PTE_W  (1ULL << 1)

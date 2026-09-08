@@ -78,6 +78,11 @@ chal_pgtbl_flag_update(unsigned long orig, pgtbl_flags_x86_t new)
 	return updated; 
 }
 
+#if defined(__x86_64__)
+static unsigned long ept_base_addr = 0;
+static int           ept_base_set  = 0;
+#endif
+
 unsigned long
 chal_vm_pgtbl_def_flag(void)
 {
@@ -729,6 +734,23 @@ chal_pgtbl_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to, struct cap_pg
 
 	if (unlikely((((struct cap_pgtbl *)ctto)->type) == PGTBL_TYPE_EPT)) {
 		flags = chal_vm_pgtbl_def_flag();
+#if defined(__x86_64__)
+		/*
+		 * Guest memory is aliased into the EPT one page at a time from
+		 * guest-physical PAGE_SIZE_4K upward, so the EPT address of a GPA
+		 * is (first alias) + (gpa - PAGE_SIZE_4K). The base is learned from
+		 * the first EPT mapping rather than assumed.
+		 */
+		if (unlikely(!ept_base_set)) {
+			ept_base_addr = capin_to;
+			ept_base_set  = 1;
+		}
+		if (unlikely(capin_to == ept_base_addr + (COS_GUEST_TRAMP_GPA - PAGE_SIZE_4K))) {
+			flags = x86_EPT_EXEC_ONLY;
+			printk("cos: EPT execute-only for guest trampoline (gpa %lx, ept %lx)\n",
+			       (unsigned long)COS_GUEST_TRAMP_GPA, (unsigned long)capin_to);
+		}
+#endif
 	} else {
 		/* sanitize the input flags */
 		flags = chal_pgtbl_flag_update(flags, flags_in);

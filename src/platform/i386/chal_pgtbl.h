@@ -50,6 +50,24 @@ typedef enum {
 	x86_EPT_VM_DEF			= x86_EPT_READ_ACCESS | x86_EPT_WRITE_ACCCESS | x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE | x86_EPT_MEM_WB | x86_EPT_IGNORE_PAT_MEM_TYPE,
 } ept_pgtbl_flags_x86_t;
 
+/*
+ * Guest-physical frame holding the SYSCALL trampoline the VMM builds at the
+ * IA32_LSTAR intercept (simple_vmm/vmm/vmsr.c). Mapped EXECUTE-ONLY in EPT: the
+ * guest may fetch from it but cannot read or write it, so it cannot discover or
+ * rewrite where its own SYSCALL lands. Execute-only EPT translations are
+ * supported here -- IA32_VMX_EPT_VPID_CAP bit 0 reads 1 on the Xeon 8160.
+ *
+ * The VMM writes the page through its own host mapping of guest memory, which
+ * does not go through EPT, so it is unaffected. Only this page is
+ * execute-only; its PUD/PMD/PT frames stay readable, because the CPU's
+ * page-table walker reads them in guest context and a walk needs EPT read
+ * permission.
+ */
+#define COS_GUEST_TRAMP_GPA	0x04000000UL
+
+#define x86_EPT_EXEC_ONLY	(x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE \
+				 | x86_EPT_MEM_WB | x86_EPT_IGNORE_PAT_MEM_TYPE)
+
 /**
  * Use the passed in page, but make sure that we only use the passed
  * in page once.
