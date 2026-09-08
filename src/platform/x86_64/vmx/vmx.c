@@ -261,8 +261,17 @@ vmx_msr_bitmaps_init(struct thread *thd)
 
 	u8_t *r_syscall_base = read_high_msr + 16;
 	u8_t *w_syscall_base = write_high_msr + 16;
-	*r_syscall_base = 0xE1;
-	*w_syscall_base = 0xE1;
+	/*
+	 * Byte 16 of the high bitmap covers 0xC0000080..0xC0000087, one bit each;
+	 * a set bit means "exit on access". 0xE1 passed STAR/LSTAR/CSTAR/FMASK
+	 * straight through. LSTAR (bit 2) is now intercepted in both directions:
+	 * a guest write is absorbed into a per-vCPU shadow and never reaches
+	 * hardware, and a guest read is served from that shadow, so IA32_LSTAR
+	 * can hold Composite's trampoline VA permanently and the vmcall fast path
+	 * never has to swap it.
+	 */
+	*r_syscall_base = 0xE5;
+	*w_syscall_base = 0xE5;
 
 	/* Bypass MSR_IA32_ARCH_CAPABILITIES 0x10a, readonly */
 	u8_t *r_arch_capabilities_base = read_low_msr + 33;

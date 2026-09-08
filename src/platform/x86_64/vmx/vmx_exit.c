@@ -103,7 +103,6 @@ vmx_ipc_resume(struct thread *thd, struct pt_regs *regs)
 	thd->vcpu_ctx.state = VM_THD_STATE_RUNNING;
 
 	/* Restore guest MSRs (no msr_get — host values are in per-CPU cache) */
-	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
 
 	/*
 	 * Restore all GPs from pt_regs and vmresume.
@@ -193,7 +192,6 @@ vmx_resume(struct thread *thd)
 	thd->vcpu_ctx.vmcs.host_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 	thd->vcpu_ctx.vmcs.host_tsc_aux = msr_get(IA32_TSC_AUX);
 	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
-	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
 	thd->vcpu_ctx.vmcs.host_cstar = msr_get(IA32_CSTAR);
 	thd->vcpu_ctx.vmcs.host_fmask = msr_get(IA32_FMASK);
 
@@ -201,7 +199,6 @@ vmx_resume(struct thread *thd)
 	msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
 	msr_set(IA32_TSC_AUX, thd->vcpu_ctx.vmcs.guest_tsc_aux);
 	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
-	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
 	msr_set(IA32_CSTAR, thd->vcpu_ctx.vmcs.guest_cstar);
 	msr_set(IA32_FMASK, thd->vcpu_ctx.vmcs.guest_fmask);
 
@@ -330,7 +327,6 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * We must do this before server execution because the server
 	 * uses syscall, which depends on host STAR/LSTAR/FMASK.
 	 */
-	msr_set(IA32_LSTAR, cache->lstar);
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
 	vmwrite(GUEST_RIP, regs->r9);
@@ -382,7 +378,6 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
 	thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
-	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);
 
@@ -390,7 +385,6 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	msr_set(IA32_KERNEL_GSBASE, thd_curr->vcpu_ctx.vmcs.host_msr_gskernel_base);
 	msr_set(IA32_TSC_AUX, thd_curr->vcpu_ctx.vmcs.host_tsc_aux);
 	msr_set(IA32_STAR, thd_curr->vcpu_ctx.vmcs.host_star);
-	msr_set(IA32_LSTAR, thd_curr->vcpu_ctx.vmcs.host_lstar);
 	msr_set(IA32_CSTAR, thd_curr->vcpu_ctx.vmcs.host_cstar);
 	msr_set(IA32_FMASK, thd_curr->vcpu_ctx.vmcs.host_fmask);
 
