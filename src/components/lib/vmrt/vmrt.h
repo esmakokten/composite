@@ -38,6 +38,14 @@ struct vmrt_vm_vcpu {
 	vm_lapicaccesscap_t lapic_access_cap;
 	vm_vmcb_t vmcb_cap;
 	thdid_t handler_tid;
+
+	/*
+	 * Shadow of the guest's IA32_LSTAR. The guest's write is intercepted and
+	 * absorbed here; hardware is never touched, so IA32_LSTAR keeps holding
+	 * Composite's trampoline VA. A guest read is served from this.
+	 */
+	u64_t lstar_shadow;
+	u8_t  tramp_installed;
 };
 
 struct vmrt_vm_comp {
