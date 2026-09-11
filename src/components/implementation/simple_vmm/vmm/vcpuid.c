@@ -60,10 +60,38 @@ int32_t memcpy_s(void *d, size_t dmax, const void *s, size_t slen)
 	return ret;
 }
 
+/*
+ * The guest's TSC frequency in kHz. Feeds the emulated CPUID leaves 0x16
+ * and 0x40000010, which the guest reads to calibrate its clocks.
+ *
+ * This used to return a hardcoded 3,100,000 kHz, so a guest on the 2.1 GHz
+ * Xeon 8160 believed its TSC ran 1.48x faster than it does.
+ *
+ * CPUID.16H:EAX is the processor base frequency in MHz, which is the
+ * invariant TSC's rate on Intel parts. Nested VMX (QEMU) commonly reports
+ * 0 there -- the reason the 0x16 case below stopped trusting it -- so fall
+ * back to the build's configured CPU_GHZ rather than another machine's
+ * constant.
+ */
 uint32_t get_tsc_khz(void)
 {
-	//3100.000 MHz 
-	return 3100000;
+	static uint32_t tsc_khz;
+	uint32_t eax, ebx, ecx, edx;
+
+	if (tsc_khz != 0U) {
+		return tsc_khz;
+	}
+
+	cpuid_subleaf(0x16U, 0U, &eax, &ebx, &ecx, &edx);
+	if (eax != 0U) {
+		tsc_khz = eax * 1000U;
+	} else {
+		tsc_khz = (uint32_t)(CPU_GHZ * 1000000.0 + 0.5);
+	}
+	printc("[vmm] guest TSC frequency: %u kHz (from %s)\n", tsc_khz,
+	       eax != 0U ? "host CPUID.16H" : "CPU_GHZ");
+
+	return tsc_khz;
 }
 
 struct cpuinfo_x86 *get_pcpu_info(void)
