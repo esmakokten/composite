@@ -146,23 +146,31 @@ chal_protdom_read(void)
 #endif /* MPK_ENABLED */
 
 
+/*
+ * Indexed by ASID, so it needs a slot for every representable name:
+ * PROTDOM_ASID() yields 0..NUM_ASID_MAX inclusive.
+ */
 struct cpu_tlb_asid_map {
-	pgtbl_t mapped_pt[NUM_ASID_MAX];
+	pgtbl_t mapped_pt[NUM_ASID_MAX + 1];
 } CACHE_ALIGNED;
 
 extern struct cpu_tlb_asid_map tlb_asid_map[NUM_CPU];
 
+/*
+ * These take an ASID, not a prot_domain_t: the caller has already
+ * extracted it.  Applying PROTDOM_ASID() again here collapsed every
+ * ASID < 16 onto slot 0, so the cached-pgtbl check missed on every
+ * component crossing and CR3_NO_FLUSH was never set.
+ */
 static inline pgtbl_t
-chal_cached_pt_curr(prot_domain_t protdom)
+chal_cached_pt_curr(u16_t asid)
 {
-	u16_t asid = PROTDOM_ASID(protdom);
 	return tlb_asid_map[get_cpuid()].mapped_pt[asid];
 }
 
 static inline void
-chal_cached_pt_update(pgtbl_t pt, prot_domain_t protdom)
+chal_cached_pt_update(pgtbl_t pt, u16_t asid)
 {
-	u16_t asid                                = PROTDOM_ASID(protdom);
 	tlb_asid_map[get_cpuid()].mapped_pt[asid] = pt;
 }
 
