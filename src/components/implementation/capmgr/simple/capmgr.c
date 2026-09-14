@@ -920,12 +920,38 @@ capmgr_get_thd(thdid_t tid)
 	return NULL;
 }
 
+/*
+ * VM components used to be created with protdom 0, i.e. ASID 0: the boot
+ * page table's PCID, and the first name the booter's allocator hands out.
+ * The capmgr does not own the booter's ASID namespace, so VM components draw
+ * from the disjoint range [PROTDOM_ASID_VM_BASE, PROTDOM_ASID_NUM_NAMES - 1);
+ * the booter asserts its own allocations stay below it. ASID 4095 is unused.
+ *
+ * A VM component's page table is its EPT and is not loaded into CR3 today,
+ * but nothing should depend on that to keep PCIDs unique.
+ */
+static struct ps_lock vm_asid_lock = PS_LOCK_INITIALIZER;
+static unsigned long  vm_asid_next = PROTDOM_ASID_VM_BASE;
+
+static prot_domain_t
+vm_protdom_alloc(void)
+{
+	unsigned long asid;
+
+	ps_lock_take(&vm_asid_lock);
+	asid = vm_asid_next++;
+	ps_lock_release(&vm_asid_lock);
+	assert(asid < PROTDOM_ASID_NUM_NAMES - 1);
+
+	return PROTDOM_INIT(asid, 0);
+}
+
 compid_t
 capmgr_vm_comp_create(u64_t mem_sz)
 {
 	/* TODO: allocate name rather than make it static */
 	char *name = "vmlinux";
-	prot_domain_t protdom = 0;
+	prot_domain_t protdom = vm_protdom_alloc();
 	compid_t id = crt_comp_id_new();
 
 	/* Allocate a new comp */

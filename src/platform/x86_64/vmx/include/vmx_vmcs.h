@@ -22,6 +22,9 @@ struct vmx_vmcs {
 
 	u64_t vpid;
 
+	/* CR3 a VM exit loads; computed in vmx_thd_init(), see the comment there */
+	u64_t host_cr3;
+
 	/* user needs to allocate a 4K page for io bitmap0 */
 	void *io_bitmap_region0;
 	/* user needs to allocate a 4K page for io bitmap1 */
@@ -77,7 +80,8 @@ struct vmx_vmcs {
 
 void vmx_env_init(void);
 void vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb);
-void vmx_host_state_init(void);
+struct thread;
+void vmx_host_state_init(struct thread *thd);
 void vmx_guest_state_init(void);
 void vmx_thd_start_or_resume(struct thread *thd);
 

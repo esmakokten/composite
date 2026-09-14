@@ -11,6 +11,21 @@
 	#include "struct_defs_arch/default/protdom_stuct_def.h"
 #endif
 
+/*
+ * ASID 0 is the boot page table's PCID: the kernel activates the boot
+ * component with protdom 0 and loads its table with no PCID bits. No other
+ * component may be given it -- two page tables under one PCID let a
+ * NO_FLUSH CR3 switch run on the other table's cached translations.
+ */
+#define PROTDOM_ASID_BOOT    0
+
+/*
+ * ASIDs from here up are reserved for VM components. The capmgr creates
+ * those without access to the booter's ASID namespace, so the two draw from
+ * disjoint ranges; the booter asserts its allocations stay below this.
+ */
+#define PROTDOM_ASID_VM_BASE 2048
+
 
 /**
  * NS creation:

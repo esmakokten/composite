@@ -3,6 +3,7 @@
 #include <protdom.h>
 #include <protdom.h>
 #include <cos_defkernel_api.h>
+#include <cos_debug.h>
 
 #if defined(__x86_64__)
 
@@ -180,6 +181,7 @@ protdom_ns_asid_alloc(struct protdom_ns_asid *asids)
 	prot_domain_t pd;
 
 	asid = protdom_asid_available_name(asids);
+	assert(asid >= 0);
 	asids->names[asid].state |= PROTDOM_NS_STATE_ALLOCATED;
 
 	return PROTDOM_INIT(asid, 0);

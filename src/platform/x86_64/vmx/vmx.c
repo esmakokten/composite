@@ -35,7 +35,7 @@ vmx_env_init(void)
 }
 
 void
-vmx_host_state_init(void)
+vmx_host_state_init(struct thread *thd)
 {
 	u64_t tmp64;
 	u32_t eax, edx;
@@ -44,9 +44,9 @@ vmx_host_state_init(void)
 	vmwrite(HOST_CR0, tmp64);
 	VMX_DEBUG("VMX_HOST_CR0: 0x%p\n", tmp64);
 
-	CR_GET(cr3, &tmp64);
-	vmwrite(HOST_CR3, tmp64);
-	VMX_DEBUG("VMX_HOST_CR3: 0x%p\n", tmp64);
+	/* Named in vmx_thd_init(), not snapshotted: see the comment there. */
+	vmwrite(HOST_CR3, get_vmcs(&thd->vcpu_ctx)->host_cr3);
+	VMX_DEBUG("VMX_HOST_CR3: 0x%p\n", get_vmcs(&thd->vcpu_ctx)->host_cr3);
 
 	CR_GET(cr4, &tmp64);
 	vmwrite(HOST_CR4, tmp64);
@@ -358,6 +358,27 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 
 	vmcs->vpid = vpid;
 	vmwrite(VPID, vmcs->vpid);
+
+	/*
+	 * HOST_CR3 is the page table a VM exit loads. Make it the exit handler
+	 * thread's home component (the VMM) under that component's own ASID --
+	 * exactly what chal_pgtbl_update() would load for it.
+	 *
+	 * It used to be a CR_GET(cr3) snapshot at first dispatch. cap_thd_switch()
+	 * enters the VM before switching page tables, so that captured whichever
+	 * thread happened to dispatch the vCPU, under whatever PCID it held. A VM
+	 * exit loads HOST_CR3 without going through the per-CPU TLB cache
+	 * (tlb_asid_map), so the cache stays honest only if this PCID belongs to
+	 * this one table: named here rather than snapshotted, and never shared
+	 * with another component (PROTDOM_ASID_BOOT, PROTDOM_ASID_VM_BASE).
+	 */
+	{
+		struct pgtbl_info *hpt = &vmcb->handler_thd->t->invstk[0].comp_info.pgtblinfo;
+
+		vmcs->host_cr3 = (u64_t)hpt->pgtbl | PROTDOM_ASID(hpt->protdom);
+		/* ASID 0 is the boot page table's PCID. */
+		assert(PROTDOM_ASID(hpt->protdom) != 0);
+	}
 	VMX_DEBUG("VMCS VPID: %u\n", vmcs->vpid);
 
 	thd->vm_vcpu_shared_region = shared_region;
@@ -408,7 +429,7 @@ vmx_thd_start_or_resume(struct thread *thd)
 	vmx_resume(thd);
 	assert(thd->vcpu_ctx.state == VM_THD_STATE_STOPPED);
 
-	vmx_host_state_init();
+	vmx_host_state_init(thd);
 	vmx_guest_state_init();
 	vmx_pinbased_ctl_init();
 	vmx_procbased_ctl_init();
