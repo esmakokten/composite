@@ -166,6 +166,10 @@ chal_cached_pt_update(pgtbl_t pt, prot_domain_t protdom)
 	tlb_asid_map[get_cpuid()].mapped_pt[asid] = pt;
 }
 
+/* diag (cr3count): cache hit/miss counters, split by whether an errand sinv is in progress */
+extern unsigned long diag_cr3_hit[2], diag_cr3_miss[2], diag_miss_prev_pt, diag_errands;
+extern int diag_in_errand;
+
 /* Update the page table */
 static inline void
 chal_pgtbl_update(struct pgtbl_info *pt)
@@ -178,7 +182,10 @@ chal_pgtbl_update(struct pgtbl_info *pt)
 	/* fastpath: don't need to invalidate tlb entries; otherwise flush tlb on switch */
 	if (likely(chal_cached_pt_curr(asid) == pt->pgtbl)) {
 		cr3 |= CR3_NO_FLUSH;
+		diag_cr3_hit[diag_in_errand]++;
 	} else {
+		if (diag_in_errand) diag_miss_prev_pt = (unsigned long)chal_cached_pt_curr(asid);
+		diag_cr3_miss[diag_in_errand]++;
 		chal_cached_pt_update(pt->pgtbl, asid);
 	}
 

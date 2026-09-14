@@ -330,7 +330,18 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
 	vmwrite(GUEST_RIP, regs->r9);
-	sinv_call(thd_curr, sinvc, regs, cos_info);	
+	diag_in_errand = 1;
+	sinv_call(thd_curr, sinvc, regs, cos_info);
+	diag_in_errand = 0;
+	if (unlikely(++diag_errands == 1 || diag_errands % 100000 == 0)) {
+		printk("diag: errand %lu | HOST_CR3 %lx | vCPU comp pgtbl %lx asid %lx | pong pgtbl %lx asid %lx\n",
+		       diag_errands, (unsigned long)vmread(HOST_CR3),
+		       (unsigned long)curr_ci->pgtblinfo.pgtbl, (unsigned long)PROTDOM_ASID(curr_ci->pgtblinfo.protdom),
+		       (unsigned long)sinvc->comp_info.pgtblinfo.pgtbl,
+		       (unsigned long)PROTDOM_ASID(sinvc->comp_info.pgtblinfo.protdom));
+		printk("diag: cr3 cache errand hit %lu miss %lu (last miss found %lx) | other hit %lu miss %lu\n",
+		       diag_cr3_hit[1], diag_cr3_miss[1], diag_miss_prev_pt, diag_cr3_hit[0], diag_cr3_miss[0]);
+	}	
 	/* no thread switch → restore_from_vm → sysretq */
 	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx":
 			 : "a"(ret), "b"(regs),"c"(&restore_from_vm));
@@ -476,3 +487,7 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	/* Should never come here */
 	vmx_assert(0);
 }
+
+/* diag (cr3count) */
+unsigned long diag_cr3_hit[2], diag_cr3_miss[2], diag_miss_prev_pt, diag_errands;
+int diag_in_errand;

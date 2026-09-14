@@ -288,6 +288,7 @@ comps_init(void)
 		prot_domain_t pd = protdom_ns_asid_alloc(ns_asid);
 		/* VM components take ASIDs from PROTDOM_ASID_VM_BASE up (capmgr). */
 		assert(PROTDOM_ASID(pd) != PROTDOM_ASID_BOOT && PROTDOM_ASID(pd) < PROTDOM_ASID_VM_BASE);
+		printc("\tdiag: asid %lu -> %s\n", (unsigned long)PROTDOM_ASID(pd), name);
 
 		/*
 		 * We assume, for now, that the composer is
