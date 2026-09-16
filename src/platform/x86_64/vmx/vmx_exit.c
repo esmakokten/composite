@@ -12,6 +12,9 @@
 #include <vmx_exit.h>
 #include <inv.h>
 
+/* diag counters for the CR3 policy: expect one switch, then only skips */
+static unsigned long cr3pol_switches, cr3pol_skips, cr3pol_errands;
+
 void lapic_ack(void);
 void restore_from_vm(void);
 int cap_thd_switch(struct pt_regs *regs, struct thread *curr, struct thread *next,
@@ -330,7 +333,36 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
 	vmwrite(GUEST_RIP, regs->r9);
-	sinv_call(thd_curr, sinvc, regs, cos_info);	
+	/*
+	 * CR3 policy: point HOST_CR3 at the errand server, so the VM exit's own
+	 * hardware load installs the server's page table -- hardware loads carry no
+	 * entry surcharge (E1) -- and the software MOV to CR3 disappears from the
+	 * path. Safe only because the kernel half (PGD 256-511) is identical in every
+	 * component table and this path touches no user addresses before the sinv.
+	 */
+	{
+		unsigned long tgt  = (unsigned long)sinvc->comp_info.pgtblinfo.pgtbl;
+		u64_t         hcr3 = thd_curr->vcpu_ctx.vmcs.host_cr3;
+		int           need_switch = ((hcr3 & ~0xFFFUL) != tgt); /* low 12 bits are the PCID */
+
+		if (unlikely(need_switch)) {
+			u64_t ncr3 = (u64_t)tgt | PROTDOM_ASID(sinvc->comp_info.pgtblinfo.protdom);
+
+			thd_curr->vcpu_ctx.vmcs.host_cr3 = ncr3;
+			vmwrite(HOST_CR3, ncr3);
+			cr3pol_switches++;
+		} else {
+			cr3pol_skips++;
+		}
+
+		sinv_call_ext(thd_curr, sinvc, regs, cos_info, need_switch);
+
+		if (unlikely(++cr3pol_errands % 100000 == 0)) {
+			printk("diag: cr3pol errands %lu switches %lu skips %lu host_cr3 %lx\n",
+			       cr3pol_errands, cr3pol_switches, cr3pol_skips,
+			       (unsigned long)thd_curr->vcpu_ctx.vmcs.host_cr3);
+		}
+	}	
 	/* no thread switch → restore_from_vm → sysretq */
 	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx":
 			 : "a"(ret), "b"(regs),"c"(&restore_from_vm));

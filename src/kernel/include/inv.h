@@ -279,7 +279,8 @@ arcv_introspect(struct cap_arcv *r, unsigned long op, unsigned long *retval)
  */
 
 static inline void
-sinv_call(struct thread *thd, struct cap_sinv *sinvc, struct pt_regs *regs, struct cos_cpu_local_info *cos_info)
+sinv_call_ext(struct thread *thd, struct cap_sinv *sinvc, struct pt_regs *regs,
+              struct cos_cpu_local_info *cos_info, int switch_pgtbl)
 {
 	unsigned long ip, sp;
 
@@ -304,7 +305,13 @@ sinv_call(struct thread *thd, struct cap_sinv *sinvc, struct pt_regs *regs, stru
 		return;
 	}
 
-	pgtbl_update(&sinvc->comp_info.pgtblinfo);
+	/*
+	 * The caller may already be in the server's address space -- on the VM fast path
+	 * HOST_CR3 names the server, so the exit's own hardware load installed it. Skipping
+	 * the write avoids ~443 cycles: ~230 for the instruction and ~210 that the next VM
+	 * entry is charged after any host MOV to CR3.
+	 */
+	if (likely(switch_pgtbl)) pgtbl_update(&sinvc->comp_info.pgtblinfo);
 	chal_protdom_write(sinvc->comp_info.pgtblinfo.protdom);
 
 	/* TODO: test this before pgtbl update...pre- vs. post-serialization */
@@ -313,6 +320,12 @@ sinv_call(struct thread *thd, struct cap_sinv *sinvc, struct pt_regs *regs, stru
 			  sinvc->entry_addr);
 	
 	return;
+}
+
+static inline void
+sinv_call(struct thread *thd, struct cap_sinv *sinvc, struct pt_regs *regs, struct cos_cpu_local_info *cos_info)
+{
+	sinv_call_ext(thd, sinvc, regs, cos_info, 1);
 }
 
 static inline void
