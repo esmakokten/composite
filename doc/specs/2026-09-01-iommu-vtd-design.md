@@ -44,6 +44,16 @@ already contains.
 The invariant is one sentence: **a device can reach exactly what its component can
 reach, and no more.**
 
+Two things are easy to conflate here, and the rest of this document depends on keeping
+them apart:
+
+- **Safety** — a device must never reach memory the kernel has handed to someone else.
+  This is a kernel property and it is already enforced, for free, by D2.
+- **Coherence** — the domain's table and the component's own table describe the same
+  memory. This is a *policy* property. Getting it wrong means the component's device
+  cannot reach a buffer the component expects it to, or retains reach to a page the
+  component has stopped using. Neither breaks kernel integrity.
+
 Alternatives rejected:
 
 - *Identity (IOVA == host-physical, domain restricted to the component's frames).*
@@ -58,17 +68,37 @@ Alternatives rejected:
 Supporting evidence for the mirrored choice: DPDK has a first-class `--iova-mode=va`
 for precisely this model. We are choosing the DPDK-native path, not fighting it.
 
-### D2. The kernel owns tables, registers, and invalidation; policy is userlevel
+### D2. The kernel does retype, construction and mapping; user level keeps the tables coherent
 
 The kernel owns:
 
-- domain page tables, as a new capability-typed page table (D3),
+- domain page tables, as a capability-typed page table (D3) — retyped, constructed and
+  mapped through exactly the machinery that already exists for every other page table,
+  with no IOMMU-specific path,
 - the root and context tables that bind a device to a domain,
 - all DMAR register access,
-- the invalidation queue and the quiescence extension (D4),
+- the invalidation queue, and IOTLB quiescence on the retype path (D4),
 - DMAR ACPI table parsing.
 
-A `dmarmgr` component owns device-to-domain assignment policy and fault consumption.
+The memory and capability manager owns:
+
+- which component gets a domain, and which device is bound to it,
+- **keeping a component's IOMMU page table coherent with its own page table** — for a
+  VM, keeping the IOMMU table coherent with the EPT,
+- fault consumption.
+
+**Why coherence is not kernel work.** Because safety does not need it. Mapping a frame
+into any page table calls `retypetbl_ref()` on that frame
+(`chal_pgtbl.c:410`), and the reference count is keyed on the *physical frame* — it
+does not record which page table the mapping went into. A frame mapped into an
+`IOMMU`-typed table therefore carries a reference like any other, and
+`retypetbl_retype2untyped` already refuses to reclaim it while the count is non-zero.
+
+So the kernel cannot let a device-reachable page be recycled, and it gets that property
+without knowing that IOMMU tables exist. Adding a kernel hook to mirror one table into
+another would buy nothing for safety and would put policy in the kernel. An earlier
+draft of this document did exactly that, as K7; it was wrong, and K7 is now user-level
+work.
 
 The register ownership needs justifying, because the original intent was to leave
 registers to userlevel. It does not survive contact with the hardware: a component
@@ -98,11 +128,11 @@ own flag-translation layer, parallel to `x86_EPT_VM_DEF` in `chal_pgtbl.h:50`.
 
 **Sharing rather than mirroring** — pointing a context-table entry directly at an
 existing page table so that synchronisation is free by construction — is plausible for
-the VM case in Phase 2, because EPT and VT-d second-level formats are deliberately
-similar. It is not plausible for a regular component page table, whose low bits mean
-present/writable/user rather than read/write/execute. Phase 1 therefore mirrors.
-Whether Phase 2 can share must be settled against the VT-d specification before it is
-designed around; it is not assumed here.
+the VM case, because EPT and VT-d second-level formats are deliberately similar. It is not plausible for a regular component page table, whose low bits mean
+present/writable/user rather than read/write/execute. A driver component's table must
+therefore be mirrored. Whether a *VM's* EPT can be shared outright is a Phase 1
+question, not a Phase 2 one, because a favourable answer deletes U5 — see
+**Open question: one table instead of two** below.
 
 ### D4. Invalidation is lazy, paid at retype
 
@@ -148,6 +178,86 @@ This is coarse — one device-reachable unmap anywhere forces a global invalidat
 next retype — but it is correct, and retype is a slow path already permitted to retry.
 Per-domain granularity is a later refinement, not a correctness requirement.
 
+### D5. Binding a device takes a reference on the IOMMU page table
+
+A context entry holds the *physical address* of a second-level page table root. That is
+a reference the capability system cannot see: if the owning component dies and the table
+is freed and retyped, the context entry still points there and the device DMAs into
+reused memory. The frame reference counts of D2 do not close this, because the context
+entry is a kernel structure holding a raw pointer, not a mapping.
+
+The fix follows the same principle as the rest of the design. `chal_pgtbl_cons` already
+increments `refcnt_flags` on a sub-table when a page table is made to point at it; a
+context entry pointing at a page table is structurally the same relationship. **Binding
+a device takes a reference on the IOMMU page-table capability, and unbinding releases
+it.** The table cannot then be deactivated or retyped while a device is still attached.
+
+### D6. Domain identifiers are tracked in the kernel
+
+A domain identifier is a per-unit number written into context entries and into
+invalidation descriptors. It is bounded by the unit's capability register — 65536 on
+both measured targets — and is only ever allocated at bind time, so allocation is not
+on any fast path.
+
+**It is tracked in the kernel, in a fixed array indexed by identifier**, following the
+LAPIC identifier precedent (`apicids[NUM_CPU]` in `lapic.c:41`): bounded, static,
+populated as devices are bound, no dynamic allocation.
+
+The alternative — allocating identifiers at user level and passing them in, the way
+`protdom_ns_asid` allocates ASIDs in `llbooter.c:61` and hands them to `comp_activate`
+inside `prot_domain_t` — was considered and rejected. IOTLB entries are tagged by domain
+identifier, so two different second-level tables sharing an identifier lets one device
+hit another's cached translation. A collision is an isolation failure, not a performance
+bug. That is the same failure mode the PCID/ASID collision in this codebase already
+produced, which makes the user-level precedent a cautionary tale as much as a template.
+
+If the identifier space is later moved to user level for consistency, the kernel must
+still reject a bind whose identifier is already live on that unit — which requires the
+same table, and yields nothing.
+
+### D7. A VM component holds two page-table capabilities
+
+A component that has a device is created with a capability to the top level of its own
+page table *and* to the top level of its IOMMU page table, established together at
+`comp_activate` so the pairing exists from birth rather than being asserted later.
+
+The space is tight and worth stating precisely rather than estimating. Measured on the
+built object:
+
+| | bytes |
+|---|---|
+| `sizeof(struct cap_comp)` | 60 |
+| `CAP_COMP` size class | 64 |
+| `struct cap_pgtbl *` | 8 |
+
+**Four bytes of slack**, so a second kernel pointer does not fit — by exactly four
+bytes. A 4-byte capability id or frame number does fit, and costs only a table lookup
+on a path that runs at bind time and on mapping changes, never on a fast path. The
+separate page for storing these, contemplated as a last resort, is therefore not
+needed.
+
+Before implementing even that, one question should be settled: **what does the kernel
+do with the IOMMU root that the manager could not do with its own bookkeeping?** Under
+D2 the kernel does not maintain coherence, so if the pairing exists only so that the
+manager knows which two tables belong together, the manager can track it and the field
+is unnecessary. The one argument for kernel-side storage is teardown, and D5 handles
+teardown better.
+
+## Open question: one table instead of two
+
+D1 assumes two tables kept coherent. If a context entry could point directly at a VM's
+existing EPT root, coherence would be free by construction, the manager would have
+nothing to maintain, and D2's user-level obligation would disappear entirely.
+
+The evidence so far is encouraging but incomplete. EPT places read, write and execute
+at bits 0, 1 and 2; the phase-three self-test confirmed VT-d second-level entries do the
+same. The divergence is EPT's bits 5:3 memory type and bit 6 ignore-PAT against VT-d's
+extended-memory-type field and snoop bit.
+
+This must be settled against the VT-d specification before the manager-side coherence
+tracking is built, because settling it favourably deletes that work rather than
+informing it.
+
 ## Consequences to accept
 
 **A device inherits its component's sharing.** Mirroring `nicmgr`'s address space makes
@@ -190,12 +300,17 @@ regions.
 - **K5 — Root and context tables.** Kernel-allocated. A context entry carries a domain
   identifier, the second-level table pointer, and an address width.
 - **K6 — Bind operation.** `CAPTBL_OP_IOMMU_BIND(bdf, pgtbl_cap)`: validate the page
-  table is IOMMU-typed, allocate a domain identifier, write the context entry,
-  invalidate the context cache.
-- **K7 — Mirroring hook.** Paired domain-table update on `pgtbl_mapping_add` and
-  `pgtbl_mapping_del` when the component has an attached domain. Requires a
-  back-pointer from a component page table to its domain. On bind, the domain is built
-  from the component's current mappings; subsequent changes are mirrored.
+  table is IOMMU-typed, refuse a device covered by an RMRR, allocate a domain
+  identifier from the kernel table (D6), **take a reference on the page-table
+  capability** (D5), write the context entry, flush it, and invalidate the context
+  cache of the unit that owns the device. Unbind releases the reference.
+- **K7 — moved to user level.** Was a kernel mirroring hook. Coherence between a
+  component's page table and its IOMMU table is policy, not safety, and belongs in the
+  memory manager — see D2 and U5. The identifier is retained rather than renumbered so
+  that the plan documents referring to K5–K10 continue to resolve.
+- **K11 — Component pairing.** `comp_activate` accepts and records the IOMMU
+  page-table root alongside the existing one, per D7 — *if* the open question above
+  leaves the kernel needing it at all.
 - **K8 — Invalidation queue.** Queue allocation, IOTLB-invalidate and
   invalidation-wait descriptor submission, and the flush timestamp of D4.
 - **K9 — Quiescence extension.** Retype path issues invalidation on demand per D4, at
@@ -206,8 +321,13 @@ regions.
 
 ### Userlevel
 
-- **U1 — `dmarmgr` component.** Interface for domain creation, device binding, and
-  fault polling.
+- **U1 — Manager responsibilities, and where they live.** Two distinct jobs, and only
+  one of them has a forced home. *Coherence* (U5) must sit wherever map and unmap
+  happen, because the paired IOMMU-table change has to be made under the same lock —
+  that is `capmgr`, and it is not a free choice. *Assignment policy and fault polling*
+  could live in a separate `dmarmgr`, but splitting them means two components need
+  authority over the same domain capability, so the default is to put them in `capmgr`
+  too and split only if a reason appears.
 - **U2 — Assignment configuration.** Which BDF is bound to which component, expressed
   in `composition_scripts/` and `tools/gen_cdf.py` alongside the rest of the system
   composition.
@@ -216,6 +336,13 @@ regions.
   glue.
 - **U4 — Close the physical-address interface.** Remove or restrict
   `memmgr_virt_to_phys` and `memmgr_map_phys_to_virt` once no caller needs them.
+- **U5 — Coherence tracking (was K7).** The memory manager maintains the invariant that
+  a component's IOMMU page table describes the same memory as the component's own page
+  table: on every map and unmap it performs for a component that has a domain, it makes
+  the paired change to that component's IOMMU table. Because the kernel refuses to
+  reclaim a frame that is still mapped anywhere (D2), a lapse here is a correctness bug
+  in the manager's own service, not a breach of kernel memory safety. Unnecessary if
+  the open question above resolves in favour of one table.
 
 ## Validation
 
@@ -243,7 +370,9 @@ and, being two-socket, exercises multi-DRHD routing that QEMU will not.
 | IOMMU not page-walk coherent | Every table write needs a cache flush | Read the coherency capability in K3; branch the write path |
 | Multi-DRHD routing | Invalidation sent to the wrong unit is silently wrong | Bind each device to the unit its DMAR scope names; test on the two-socket target, not only QEMU |
 | Vendored DPDK lacks working `--iova-mode=va` | U3 stalls | Check the vendored version early; identity mapping is the fallback |
-| Mirroring hook races page-table updates | Correctness | Domain update inside the same critical section as the component mapping change |
+| Manager's coherence tracking races its own map/unmap | The component's device sees a stale view | Manager makes the paired IOMMU-table change under the same lock it already holds for the mapping; a lapse is confined to that component (D2) |
+| Domain identifier collision across two page tables | Isolation failure — one device hits another's cached translation | Identifiers allocated in the kernel (D6), uniqueness by construction |
+| Context entry outlives the page table it names | Device DMAs into reclaimed memory | Binding holds a reference on the page-table capability (D5) |
 
 ## Measured hardware facts
 
@@ -289,5 +418,4 @@ beyond the legacy 32–63 range with a send endpoint per vector, an interrupt re
 table, and device assignment into a VM. The piece that matters for the low-overhead
 virtualisation argument is VT-d posted interrupts, which deliver a device interrupt
 into a running guest without an exit — available on the Skylake-SP target. Whether a
-VM's domain can share its EPT outright, rather than mirror it, is the first question
-Phase 2 should settle.
+VM's domain can share its EPT outright is settled in Phase 1, not here.
