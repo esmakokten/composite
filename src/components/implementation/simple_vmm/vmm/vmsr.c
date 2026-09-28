@@ -136,6 +136,19 @@ rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		regs->dx = 0;
 		goto done;
 	}
+	case MSR_PPIN_CTL:
+	{
+		/*
+		 * Protected Processor Inventory Number control. Linux >= 6.x probes
+		 * it with rdmsrl_safe() during early boot (arch/x86/kernel/cpu/intel.c)
+		 * and would absorb a #GP, but this VMM has no exception-injection
+		 * path, so the probe must succeed. Reading 0 means "PPIN locked and
+		 * disabled", which makes the guest leave the feature alone.
+		 */
+		regs->ax = 0;
+		regs->dx = 0;
+		goto done;
+	}
 	default:
 		VM_PANIC(vcpu);
 	}
@@ -236,6 +249,11 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 	case MSR_IA32_APIC_BASE:
 	{
 		VM_PANIC(vcpu);
+		goto done;
+	}
+	case MSR_PPIN_CTL:
+	{
+		/* The guest tries to lock PPIN after reading the control as 0; there is nothing to lock. */
 		goto done;
 	}
 	default:
