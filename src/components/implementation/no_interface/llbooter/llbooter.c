@@ -179,6 +179,12 @@ comps_init(void)
 	ns_asid = ss_ns_asid_alloc();
 	assert(ns_asid);
 	if (protdom_ns_asids_init(ns_asid) != 0) BUG();
+	/*
+	 * Name 0 is this component's own: the kernel activated the booter with
+	 * protdom 0 and, adding one, gave it PCID 1. Handing name 0 to the first
+	 * component created here would put two page tables under PCID 1.
+	 */
+	ns_asid->names[PROTDOM_ASID_BOOT].state |= PROTDOM_NS_STATE_ALLOCATED;
 	ss_ns_asid_activate(ns_asid);
 
 	ret = args_get_entry("addrspc_shared", &ases);
@@ -284,6 +290,8 @@ comps_init(void)
 		elf_hdr = (void *)args_get(imgpath);
 
 		prot_domain_t pd = protdom_ns_asid_alloc(ns_asid);
+		/* VM components take names from PROTDOM_ASID_VM_BASE up (capmgr). */
+		assert(PROTDOM_ASID(pd) < PROTDOM_ASID_VM_BASE);
 
 		/*
 		 * We assume, for now, that the composer is

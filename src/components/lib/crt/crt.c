@@ -491,7 +491,12 @@ crt_comp_vm_create(struct crt_comp *c, char *name, compid_t id, prot_domain_t pr
 	mem = cos_page_bump_alloc(root_ci);
 	assert(mem);
 	memset(mem, 0, PAGE_SIZE_4K);
-	cos_mem_alias_at(ci, 0, root_ci, (vaddr_t)mem, protdom);
+	/*
+	 * The last argument is perm_flags, not a protection domain. This used to
+	 * pass protdom, harmless only while every VM component had protdom 0;
+	 * with a real ASID it would set stray permission bits on the guest's page 0.
+	 */
+	cos_mem_alias_at(ci, 0, root_ci, (vaddr_t)mem, 0);
 
 	return 0;
 }

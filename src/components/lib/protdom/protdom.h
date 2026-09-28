@@ -11,6 +11,21 @@
 	#include "struct_defs_arch/default/protdom_stuct_def.h"
 #endif
 
+/*
+ * Name 0 belongs to the boot component: the kernel activates it with protdom
+ * 0 before any allocator runs. The booter marks it allocated in its namespace.
+ */
+#define PROTDOM_ASID_BOOT    0
+
+/*
+ * ASIDs from here up are reserved for VM components. The capmgr creates those
+ * without access to the booter's ASID namespace, so the two draw from
+ * disjoint ranges; the booter asserts its allocations stay below this. The
+ * kernel adds one to every name it is given (component.h), so the boot page
+ * table's PCID 0 is never shared and name PROTDOM_ASID_NUM_NAMES - 1 is
+ * unusable.
+ */
+#define PROTDOM_ASID_VM_BASE 2048
 
 /**
  * NS creation:

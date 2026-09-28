@@ -16,6 +16,8 @@
 #include <initargs.h>
 #include <addr.h>
 #include <contigmem.h>
+#include <protdom.h>
+#include <ps.h>
 
 struct cm_rcv {
 	struct crt_rcv  rcv;
@@ -920,12 +922,39 @@ capmgr_get_thd(thdid_t tid)
 	return NULL;
 }
 
+/*
+ * VM components used to be created with protdom 0: the first name the
+ * booter's allocator hands out, and (before the kernel started adding one)
+ * the boot page table's PCID. Two page tables under one PCID let a NO_FLUSH
+ * CR3 switch run on the other table's cached translations, and a VM exit
+ * loads HOST_CR3 behind the per-CPU TLB cache, which cannot catch it.
+ *
+ * The capmgr does not own the booter's ASID namespace, so VM components draw
+ * from the disjoint range [PROTDOM_ASID_VM_BASE, PROTDOM_ASID_NUM_NAMES - 1);
+ * the booter asserts its own allocations stay below it. A fetch-and-add, not
+ * a lock: nothing here may block, and the counter is visible to this function
+ * only.
+ *
+ * A VM component's page table is its EPT and is not loaded into CR3 today,
+ * but nothing should depend on that to keep PCIDs unique.
+ */
+static prot_domain_t
+vm_protdom_alloc(void)
+{
+	static long next = PROTDOM_ASID_VM_BASE;
+	long asid = ps_faa(&next, 1);
+
+	assert(asid < PROTDOM_ASID_NUM_NAMES - 1);
+
+	return PROTDOM_INIT((prot_domain_t)asid, 0);
+}
+
 compid_t
 capmgr_vm_comp_create(u64_t mem_sz)
 {
 	/* TODO: allocate name rather than make it static */
 	char *name = "vmlinux";
-	prot_domain_t protdom = 0;
+	prot_domain_t protdom = vm_protdom_alloc();
 	compid_t id = crt_comp_id_new();
 
 	/* Allocate a new comp */

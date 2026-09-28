@@ -53,6 +53,20 @@ comp_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t captbl_cap, 
 		cos_throw(undo_ptc, -ECASFAIL);
 	}
 
+	/*
+	 * One PCID per page table. The boot page table runs under PCID 0,
+	 * loaded with no PCID bits before any component exists, and a VM exit
+	 * loads HOST_CR3 in hardware behind the per-CPU TLB cache: two tables
+	 * under one PCID would let a NO_FLUSH switch run on the other table's
+	 * cached translations. User level is not trusted to avoid 0 (it hands
+	 * out name 0 first, and passed 0 for every VM component): the kernel
+	 * absorbs whatever it is given by adding one, so every component's
+	 * PCID is nonzero and distinct as long as user-level names are. The
+	 * last name is therefore unusable.
+	 */
+	if (unlikely(PROTDOM_ASID(protdom) + 1 > NUM_ASID_MAX)) return -EINVAL;
+	protdom = PROTDOM_INIT(PROTDOM_ASID(protdom) + 1, PROTDOM_MPK_KEY(protdom));
+
 	compc = (struct cap_comp *)__cap_capactivate_pre(t, cap, capin, CAP_COMP, &ret);
 	if (!compc) cos_throw(undo_ctc, ret);
 	compc->entry_addr             = entry_addr;
