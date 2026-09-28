@@ -177,6 +177,15 @@ chal_cpuid(u32_t *a, u32_t *b, u32_t *c, u32_t *d)
 	asm volatile("cpuid" : "+a"(*a), "+b"(*b), "+c"(*c), "+d"(*d));
 }
 
+/*
+ * The RFLAGS bits SYSCALL clears on entry to the kernel: Linux's mask,
+ * arch/x86/kernel/cpu/common.c (syscall_init), CF PF AF ZF SF TF IF DF OF
+ * IOPL NT RF AC ID. Shared with the VMM (simple_vmm), which compares a
+ * guest's IA32_FMASK write against it: a guest that writes this value
+ * coincides with the host, and the register need not be swapped at exits.
+ */
+#define SFMASK_LINUX_COMPAT 0x257FD5
+
 static inline void
 chal_cpu_coreid_set(u32_t coreid)
 {
@@ -282,7 +291,17 @@ chal_cpu_init(void)
 
 	writemsr(MSR_STAR, 0, SEL_KCSEG | ((SEL_UCSEG - 16) << 16));
 	writemsr(MSR_LSTAR, (u32_t)((u64_t)sysenter_entry), (u32_t)((u64_t)sysenter_entry >> 32));
-	writemsr(MSR_SFMASK, 512, 0);
+	/*
+	 * Composite used to clear only IF (0x200) on SYSCALL. Adopting Linux's
+	 * mask makes IA32_FMASK identical on both sides of a VM crossing, so a
+	 * Linux guest's value coincides with the host's (rung R13). A clear-mask
+	 * is monotone, so the larger value is also strictly safer: clearing only
+	 * IF let a component carry flags into the kernel --
+	 *   AC  would disable SMAP for the syscall's duration, once SMAP is on;
+	 *   DF  left kernel string operations in the direction user code chose;
+	 *   NT, TF  the iret-fault and kernel-single-step hazards.
+	 */
+	writemsr(MSR_SFMASK, SFMASK_LINUX_COMPAT, 0);
 	writemsr(MSR_USER_GSBASE, 0, 0);
 	writemsr(MSR_KERNEL_GSBASE, (u32_t)((u64_t)(&kernel_stack_info[cpu_id])),
 	         (u32_t)((u64_t)(&kernel_stack_info[cpu_id]) >> 32));
