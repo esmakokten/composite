@@ -1,5 +1,6 @@
 #include <chal_cpu.h>
 #include <thd.h>
+#include <fpu.h>
 #include <cpuid.h>
 #include <chal_asm_inc.h>
 #include <vmx.h>
@@ -167,6 +168,11 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	cos_info = cos_cpu_local_info();
 	thd_curr = thd_current(cos_info);	
 	cpuid = cos_info->cpuid;
+
+	/* Evaluation hooks; empty in the timing flavour. The null exit does not return. */
+
+	/* The exit just reloaded CR0 from the HOST_CR0 snapshot; resync the FPU shadow. */
+	fpu_shadow_resync();
 
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base = msr_get(IA32_GS_BASE);
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
