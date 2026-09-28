@@ -136,6 +136,18 @@ rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		regs->dx = 0;
 		goto done;
 	}
+	case MSR_IA32_TSC_DEADLINE:
+	{
+		/*
+		 * The deadline the guest last armed, as the write handler recorded
+		 * it; 0 once it has fired or was never set. A guest that saves and
+		 * restores its own deadline around a critical section reads this.
+		 */
+		u64_t deadline = vcpu->next_timer == ~0ULL ? 0 : vcpu->next_timer;
+		regs->ax = (u32_t)deadline;
+		regs->dx = (u32_t)(deadline >> 32);
+		goto done;
+	}
 	case MSR_PPIN_CTL:
 	{
 		/*
