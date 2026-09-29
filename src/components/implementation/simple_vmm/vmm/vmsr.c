@@ -1,6 +1,7 @@
 #include <vmrt.h>
 #include <capmgr.h>
 #include <vmx_msr.h>
+#include <vm_host_msr.h>
 
 /*
  * Hand the kernel this vCPU's value for a register the exit path no longer
@@ -30,6 +31,12 @@ rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		/* Served from the shadow; hardware holds the host's, which the guest never sees. */
 		regs->ax = (u32_t)vcpu->cstar_shadow;
 		regs->dx = (u32_t)(vcpu->cstar_shadow >> 32);
+		goto done;
+	}
+	case MSR_IA32_FMASK:
+	{
+		regs->ax = (u32_t)vcpu->fmask_shadow;
+		regs->dx = (u32_t)(vcpu->fmask_shadow >> 32);
 		goto done;
 	}
 	case MSR_IA32_EFER: 
@@ -210,6 +217,24 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		 * back what was written.
 		 */
 		vcpu->cstar_shadow = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
+		goto done;
+	}
+	case MSR_IA32_FMASK:
+	{
+		/*
+		 * The host runs with Linux's mask (COS_HOST_FMASK), so a Linux guest's
+		 * write coincides and the register is left alone at every exit. A
+		 * guest that writes anything else cannot be given the register: until
+		 * the fallback swap exists (rung R16) that guest is stopped here.
+		 */
+		u64_t val = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
+
+		vcpu->fmask_shadow = val;
+		if (val != COS_HOST_FMASK) {
+			printc("[vmm] FMASK write %llx differs from the host's %llx: no fallback yet\n",
+			       (unsigned long long)val, (unsigned long long)COS_HOST_FMASK);
+			VM_PANIC(vcpu);
+		}
 		goto done;
 	}
 	case MSR_IA32_EFER:

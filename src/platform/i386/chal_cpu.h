@@ -184,7 +184,8 @@ chal_cpuid(u32_t *a, u32_t *b, u32_t *c, u32_t *d)
  * guest's IA32_FMASK write against it: a guest that writes this value
  * coincides with the host, and the register need not be swapped at exits.
  */
-#define SFMASK_LINUX_COMPAT 0x257FD5
+#include "shared/vm_host_msr.h"
+#define SFMASK_LINUX_COMPAT COS_HOST_FMASK
 
 static inline void
 chal_cpu_coreid_set(u32_t coreid)

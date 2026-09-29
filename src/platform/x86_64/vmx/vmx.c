@@ -340,8 +340,8 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	 */
 	u8_t *r_syscall_base = read_high_msr + 16;
 	u8_t *w_syscall_base = write_high_msr + 16;
-	*r_syscall_base = 0xE9;
-	*w_syscall_base = 0xE9;
+	*r_syscall_base = 0xF9; /* FMASK (bit 4) too: coincides with the host's, shadowed for reads */
+	*w_syscall_base = 0xF9;
 
 	/* Bypass MSR_IA32_ARCH_CAPABILITIES 0x10a, readonly */
 	u8_t *r_arch_capabilities_base = read_low_msr + 33;
@@ -377,7 +377,6 @@ vmx_thd_state_init(struct thread *thd)
 
 	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
 	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
-	thd->vcpu_ctx.vmcs.host_fmask = msr_get(IA32_FMASK);
 
 	return;
 }

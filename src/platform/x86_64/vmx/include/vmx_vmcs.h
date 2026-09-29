@@ -75,8 +75,6 @@ struct vmx_vmcs {
 	u64_t host_star;
 	u64_t guest_lstar;
 	u64_t host_lstar;
-	u64_t guest_fmask;
-	u64_t host_fmask;
 };
 
 void vmx_env_init(void);

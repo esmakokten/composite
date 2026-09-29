@@ -45,6 +45,7 @@ struct vmrt_vm_vcpu {
 	 * CSTAR is dead on Intel and never reaches hardware at all.
 	 */
 	u64_t cstar_shadow;
+	u64_t fmask_shadow;
 };
 
 struct vmrt_vm_comp {
