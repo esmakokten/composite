@@ -463,6 +463,8 @@ thd_deactivate(struct captbl *ct, struct cap_captbl *dest_ct, unsigned long capi
 	/* deactivation success */
 	if (thd->refcnt == 0) {
 		if (cli->next_ti.thd == thd) thd_next_thdinfo_update(cli, 0, 0, 0, 0);
+		/* A vCPU that owns its core's VMCS slot must release it before its memory goes. */
+		if (thd->thd_type == THD_TYPE_VM) vm_thd_deinit(thd);
 
 		/* move the kmem for the thread to a location
 		 * in a pagetable as COSFRAME */

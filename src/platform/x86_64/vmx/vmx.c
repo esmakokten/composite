@@ -26,6 +26,25 @@ u64_t cr0_fixed0_bits = 0;
 /* Note: this page is just used for enabling cpu vm capability, it doesn't relate to vcpu VMCS pages */
 static char vm_env_page[PAGE_SIZE_4K] __attribute__((aligned(PAGE_SIZE_4K)));
 
+/*
+ * The vCPU whose VMCS is current on each core: the core's owner.
+ *
+ * VMPTRLD used to happen once, at vCPU thread creation, so main supported one
+ * vCPU per core: a second vCPU created on the same core replaced the current
+ * VMCS and the first one then resumed on the wrong one. Every entry now
+ * compares the core's owner with the vCPU being entered (one load and one
+ * compare on the common path) and, on a change, loads the vCPU's VMCS. The
+ * guest-owned registers that later rungs stop swapping at every exit
+ * (KERNEL_GS_BASE, TSC_AUX) are handled at this one place too, since an owner
+ * change is the only event that needs them.
+ *
+ * NULL means nothing owns the core: after boot, after a vCPU's creation
+ * (which loads its VMCS to fill it, then disowns the core so that the first
+ * launch of any vCPU goes through the same code as a switch), and after the
+ * owner's teardown. Compared by value only; never dereferenced.
+ */
+static struct thread *vmx_core_owner[NUM_CPU];
+
 void
 vmx_env_init(void)
 {
@@ -332,7 +351,9 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 	vmcs->vmcs = vmcs_page;
 
 	*(u32_t *)vmcs_page = vmx_get_revision_id();
+	/* Make the new VMCS current for the writes below, then disown the core. */
 	load_vmcs(vmcs_page);
+	vmx_core_owner[get_cpuid()] = NULL;
 	VMX_DEBUG("VMCS PAGE: 0x%p\n", vmcs->vmcs);
 
 	vmcs->vapic = lapic;
@@ -365,6 +386,27 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 	vmwrite(POSTED_INTERRUPT_DESCRIPTOR, chal_va2pa(&((struct vm_vcpu_shared_region *)shared_region)->pi_desc));
 }
 
+/*
+ * A different vCPU is entered on this core (or the first one after the core
+ * was disowned): make its VMCS current. First launch takes this path too.
+ */
+static void
+vmx_owner_switch(struct thread *thd)
+{
+	load_vmcs(get_vmcs(&thd->vcpu_ctx)->vmcs);
+	vmx_core_owner[get_cpuid()] = thd;
+}
+
+/*
+ * The vCPU thread is going away. Clear the slot by comparison only: the
+ * thread's memory may be released right after this.
+ */
+void
+vmx_thd_deinit(struct thread *thd)
+{
+	if (vmx_core_owner[thd->cpuid] == thd) vmx_core_owner[thd->cpuid] = NULL;
+}
+
 static void
 vmx_launch(void)
 {
@@ -393,8 +435,12 @@ vmx_thd_start_or_resume(struct thread *thd)
 	struct vmx_vmcs *vmcs = get_vmcs(&thd->vcpu_ctx);
 
 	assert(thd->thd_type == THD_TYPE_VM);
+	/* A vCPU never moves between cores (threads are pinned); a VMCS is current on one core only. */
+	assert(thd->cpuid == get_cpuid());
 	
 	VMX_DEBUG("Starting or resuming VM thread: 0x%p, tid: %u, coreid:%u\n", thd, thd->tid, thd->cpuid);
+
+	if (unlikely(vmx_core_owner[get_cpuid()] != thd)) vmx_owner_switch(thd);
 
 	vmx_resume(thd);
 	assert(thd->vcpu_ctx.state == VM_THD_STATE_STOPPED);
