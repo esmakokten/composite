@@ -290,7 +290,13 @@ chal_cpu_init(void)
 	writemsr(MSR_IA32_EFER, low | 0x1, high);
 
 	writemsr(MSR_STAR, 0, SEL_KCSEG | ((SEL_UCSEG - 16) << 16));
-	writemsr(MSR_LSTAR, (u32_t)((u64_t)sysenter_entry), (u32_t)((u64_t)sysenter_entry >> 32));
+	/*
+	 * SYSCALL enters at the fixed-VA trampoline, not directly at
+	 * sysenter_entry, so that IA32_LSTAR holds a value a Linux guest can
+	 * share (rung R15). The trampoline is built and mapped in
+	 * kern_setup_image() before this runs.
+	 */
+	writemsr(MSR_LSTAR, (u32_t)COS_SYSCALL_TRAMP_VA, (u32_t)(COS_SYSCALL_TRAMP_VA >> 32));
 	/*
 	 * Composite used to clear only IF (0x200) on SYSCALL. Adopting Linux's
 	 * mask makes IA32_FMASK identical on both sides of a VM crossing, so a
