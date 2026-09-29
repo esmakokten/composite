@@ -38,6 +38,13 @@ struct vmrt_vm_vcpu {
 	vm_lapicaccesscap_t lapic_access_cap;
 	vm_vmcb_t vmcb_cap;
 	thdid_t handler_tid;
+
+	/*
+	 * Shadows of the host-critical SYSCALL registers the guest may not
+	 * touch in hardware: reads and writes are intercepted and served here.
+	 * CSTAR is dead on Intel and never reaches hardware at all.
+	 */
+	u64_t cstar_shadow;
 };
 
 struct vmrt_vm_comp {

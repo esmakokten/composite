@@ -330,10 +330,18 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	*r_fs_base = 0XF0;
 	*w_fs_base = 0XF8;
 
+	/*
+	 * Byte 16 covers 0xC0000080..0xC0000087, one bit each; a set bit exits.
+	 * 0xE1 passed STAR (bit 1), LSTAR (2), CSTAR (3) and FMASK (4) through,
+	 * in both directions, and the exit path swapped them. CSTAR (0xE9) is
+	 * now intercepted both ways: it is dead on Intel (SYSCALL from
+	 * compatibility mode is not used), so the guest's value lives in the
+	 * VMM's shadow and never reaches hardware.
+	 */
 	u8_t *r_syscall_base = read_high_msr + 16;
 	u8_t *w_syscall_base = write_high_msr + 16;
-	*r_syscall_base = 0xE1;
-	*w_syscall_base = 0xE1;
+	*r_syscall_base = 0xE9;
+	*w_syscall_base = 0xE9;
 
 	/* Bypass MSR_IA32_ARCH_CAPABILITIES 0x10a, readonly */
 	u8_t *r_arch_capabilities_base = read_low_msr + 33;
@@ -369,7 +377,6 @@ vmx_thd_state_init(struct thread *thd)
 
 	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
 	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
-	thd->vcpu_ctx.vmcs.host_cstar = msr_get(IA32_CSTAR);
 	thd->vcpu_ctx.vmcs.host_fmask = msr_get(IA32_FMASK);
 
 	return;

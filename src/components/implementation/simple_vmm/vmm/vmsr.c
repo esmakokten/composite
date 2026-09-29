@@ -25,6 +25,13 @@ rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
 	volatile struct vm_vcpu_shared_region *regs = vcpu->shared_region;
 
 	switch (regs->cx) {
+	case MSR_IA32_CSTAR:
+	{
+		/* Served from the shadow; hardware holds the host's, which the guest never sees. */
+		regs->ax = (u32_t)vcpu->cstar_shadow;
+		regs->dx = (u32_t)(vcpu->cstar_shadow >> 32);
+		goto done;
+	}
 	case MSR_IA32_EFER: 
 	{
 		u64_t guest_efer = regs->efer;
@@ -193,6 +200,18 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 	volatile struct vm_vcpu_shared_region *regs = vcpu->shared_region;
 
 	switch (regs->cx) {
+	case MSR_IA32_CSTAR:
+	{
+		/*
+		 * Absorbed into the shadow, never loaded: CSTAR is the SYSCALL target
+		 * from compatibility mode, which Intel parts do not use (the SDM lists
+		 * it, AMD parts consume it). Linux writes ignore_sysret's address once
+		 * per CPU. Correct virtualization is the whole benefit: a read gives
+		 * back what was written.
+		 */
+		vcpu->cstar_shadow = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
+		goto done;
+	}
 	case MSR_IA32_EFER:
 	{
 		u64_t guest_efer;
