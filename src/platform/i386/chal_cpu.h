@@ -290,6 +290,7 @@ chal_cpu_init(void)
 	readmsr(MSR_IA32_EFER, &low, &high);
 	writemsr(MSR_IA32_EFER, low | 0x1, high);
 
+	/* SEL_KCSEG | (SEL_UCSEG - 16) << 16 in the high half: with Linux's layout this is COS_HOST_STAR. */
 	writemsr(MSR_STAR, 0, SEL_KCSEG | ((SEL_UCSEG - 16) << 16));
 	/*
 	 * SYSCALL enters at the fixed-VA trampoline, not directly at

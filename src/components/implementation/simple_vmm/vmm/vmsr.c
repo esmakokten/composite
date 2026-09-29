@@ -39,6 +39,12 @@ rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		regs->dx = (u32_t)(vcpu->fmask_shadow >> 32);
 		goto done;
 	}
+	case MSR_IA32_STAR:
+	{
+		regs->ax = (u32_t)vcpu->star_shadow;
+		regs->dx = (u32_t)(vcpu->star_shadow >> 32);
+		goto done;
+	}
 	case MSR_IA32_EFER: 
 	{
 		u64_t guest_efer = regs->efer;
@@ -233,6 +239,24 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		if (val != COS_HOST_FMASK) {
 			printc("[vmm] FMASK write %llx differs from the host's %llx: no fallback yet\n",
 			       (unsigned long long)val, (unsigned long long)COS_HOST_FMASK);
+			VM_PANIC(vcpu);
+		}
+		goto done;
+	}
+	case MSR_IA32_STAR:
+	{
+		/*
+		 * The host GDT follows Linux's selector layout, so a Linux guest's
+		 * STAR (0x0023001000000000) is the host's (COS_HOST_STAR) and the
+		 * register is left alone at every exit. Another value cannot be given
+		 * to the guest until the fallback swap (R16).
+		 */
+		u64_t val = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
+
+		vcpu->star_shadow = val;
+		if (val != COS_HOST_STAR) {
+			printc("[vmm] STAR write %llx differs from the host's %llx: no fallback yet\n",
+			       (unsigned long long)val, (unsigned long long)COS_HOST_STAR);
 			VM_PANIC(vcpu);
 		}
 		goto done;

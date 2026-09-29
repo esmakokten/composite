@@ -46,6 +46,7 @@ struct vmrt_vm_vcpu {
 	 */
 	u64_t cstar_shadow;
 	u64_t fmask_shadow;
+	u64_t star_shadow;
 };
 
 struct vmrt_vm_comp {

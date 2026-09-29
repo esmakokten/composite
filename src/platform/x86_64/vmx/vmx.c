@@ -9,6 +9,7 @@
 #include <vmx_exit.h>
 #include <vmx_utils.h>
 #include <vmx_vmcs.h>
+#include <shared/vm_host_msr.h>
 
 extern u64_t get_idt_base(void);
 extern u64_t get_tss_base(cpuid_t cpu_id);
@@ -73,6 +74,10 @@ vmx_core_tsc_aux_write(u64_t val)
 	msr_set(IA32_TSC_AUX, val);
 	vmx_core_tsc_aux[get_cpuid()] = val;
 }
+
+/* The shared constant must be what chal_cpu_init() writes into IA32_STAR. */
+_Static_assert(COS_HOST_STAR == (((u64_t)(SEL_KCSEG | ((SEL_UCSEG - 16) << 16))) << 32),
+               "COS_HOST_STAR does not match the GDT layout");
 
 void
 vmx_env_init(void)
@@ -340,8 +345,8 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	 */
 	u8_t *r_syscall_base = read_high_msr + 16;
 	u8_t *w_syscall_base = write_high_msr + 16;
-	*r_syscall_base = 0xF9; /* FMASK (bit 4) too: coincides with the host's, shadowed for reads */
-	*w_syscall_base = 0xF9;
+	*r_syscall_base = 0xFB; /* FMASK (bit 4) and STAR (bit 1) too: coincide with the host's, shadowed for reads */
+	*w_syscall_base = 0xFB;
 
 	/* Bypass MSR_IA32_ARCH_CAPABILITIES 0x10a, readonly */
 	u8_t *r_arch_capabilities_base = read_low_msr + 33;
@@ -375,7 +380,6 @@ vmx_thd_state_init(struct thread *thd)
 	/* Will never change the microcode later */
 	shared_region->microcode_version = get_microcode();
 
-	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
 	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
 
 	return;

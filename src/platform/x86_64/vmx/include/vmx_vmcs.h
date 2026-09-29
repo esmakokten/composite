@@ -71,8 +71,6 @@ struct vmx_vmcs {
 	 */
 	u64_t guest_msr_gskernel_base;
 
-	u64_t guest_star; 
-	u64_t host_star;
 	u64_t guest_lstar;
 	u64_t host_lstar;
 };

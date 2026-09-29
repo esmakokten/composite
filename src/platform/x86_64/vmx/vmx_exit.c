@@ -109,7 +109,7 @@ vmx_resume(struct thread *thd)
 	 * at vmx_thd_start_or_resume).
 	 */
 	/* TSC_AUX: stays loaded; writes are intercepted; the owner switch handles a change of vCPU. */
-	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
+	/* STAR: intercepted both ways; the guest's value coincides with the host's (COS_HOST_STAR). */
 	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
 	/*
 	 * CSTAR: intercepted both ways, shadowed in the VMM, never loaded.
@@ -117,7 +117,6 @@ vmx_resume(struct thread *thd)
 	 * host's (COS_HOST_FMASK), so the register is never touched.
 	 */
 
-	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
 	msr_set(IA32_LSTAR, thd->vcpu_ctx.vmcs.guest_lstar);
 
 	/* Restore GPs for vcpu */
@@ -184,10 +183,8 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	fpu_shadow_resync();
 
 	/* GS_BASE: swapped by the VMCS; KERNEL_GS_BASE and TSC_AUX: stay loaded, see vmx_resume(). */
-	thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
 	thd_curr->vcpu_ctx.vmcs.guest_lstar = msr_get(IA32_LSTAR);
 	
-	msr_set(IA32_STAR, thd_curr->vcpu_ctx.vmcs.host_star);
 	msr_set(IA32_LSTAR, thd_curr->vcpu_ctx.vmcs.host_lstar);
 
 	vmx_assert(cos_info);
