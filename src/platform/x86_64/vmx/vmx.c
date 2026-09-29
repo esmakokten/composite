@@ -14,7 +14,6 @@ extern u64_t get_idt_base(void);
 extern u64_t get_tss_base(cpuid_t cpu_id);
 
 static inline u64_t get_fs_base(void) { return msr_get(IA32_FS_BASE); }
-static inline u64_t get_gs_base(void){ return msr_get(IA32_GS_BASE); }
 static inline u64_t get_efer(void) { return msr_get(IA32_EFER); }
 static inline struct vmx_vmcs *get_vmcs(struct vm_vcpu_context *vcpu_ctx) { return &vcpu_ctx->vmcs; }
 
@@ -81,7 +80,14 @@ vmx_host_state_init(void)
 	vmwrite(HOST_GS, SEL_KDSEG);
 	vmwrite(HOST_TR, SEL_TSS);
 	vmwrite(HOST_FS_BASE, get_fs_base());
-	vmwrite(HOST_GS_BASE, get_gs_base());
+	/*
+	 * The host's GS base belongs to the core and never changes: after the
+	 * system-call swapgs it is this core's kernel stack info, which is what
+	 * chal_cpu_init() put in IA32_KERNEL_GS_BASE. Written from that
+	 * constant, not from a context-dependent read of the register. The
+	 * VMCS loads it at every exit, so the exit path never touches GS_BASE.
+	 */
+	vmwrite(HOST_GS_BASE, (u64_t)&kernel_stack_info[get_cpuid()]);
 	vmwrite(HOST_TR_BASE, get_tss_base(get_cpuid()));
 
 	vmwrite(HOST_SS, SEL_KDSEG);
@@ -288,7 +294,6 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	u8_t *w_arch_capabilities_base = write_low_msr + 33;
 	*r_arch_capabilities_base = 0XFB;
 
-	vmcs->host_msr_gs_base = msr_get(IA32_GS_BASE);
 	vmcs->host_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 
 	return;

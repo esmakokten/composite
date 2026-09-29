@@ -94,8 +94,13 @@ vmx_resume(struct thread *thd)
 	}
 #endif
 
-	/* TODO: some msrs like kernel gs are (per-core) constant, can make host saving code simpler`*/
-	thd->vcpu_ctx.vmcs.host_msr_gs_base = msr_get(IA32_GS_BASE);
+	/*
+	 * IA32_GS_BASE is not swapped here: the VMCS does it. A VM entry loads
+	 * GS.base from GUEST_GS_BASE and a VM exit stores it there and loads
+	 * HOST_GS_BASE, which holds this core's constant (the kernel stack
+	 * info). The guest's writes are passed through and land in the guest
+	 * field at the exit, so no software copy is needed in either direction.
+	 */
 	thd->vcpu_ctx.vmcs.host_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 	thd->vcpu_ctx.vmcs.host_tsc_aux = msr_get(IA32_TSC_AUX);
 	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
@@ -103,7 +108,6 @@ vmx_resume(struct thread *thd)
 	thd->vcpu_ctx.vmcs.host_cstar = msr_get(IA32_CSTAR);
 	thd->vcpu_ctx.vmcs.host_fmask = msr_get(IA32_FMASK);
 
-	msr_set(IA32_GS_BASE, thd->vcpu_ctx.vmcs.guest_msr_gs_base);
 	msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
 	msr_set(IA32_TSC_AUX, thd->vcpu_ctx.vmcs.guest_tsc_aux);
 	msr_set(IA32_STAR, thd->vcpu_ctx.vmcs.guest_star);
@@ -174,7 +178,7 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	/* The exit just reloaded CR0 from the HOST_CR0 snapshot; resync the FPU shadow. */
 	fpu_shadow_resync();
 
-	thd_curr->vcpu_ctx.vmcs.guest_msr_gs_base = msr_get(IA32_GS_BASE);
+	/* GS_BASE: swapped by the VMCS, see vmx_resume(). */
 	thd_curr->vcpu_ctx.vmcs.guest_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
 	thd_curr->vcpu_ctx.vmcs.guest_tsc_aux = msr_get(IA32_TSC_AUX);
 	thd_curr->vcpu_ctx.vmcs.guest_star = msr_get(IA32_STAR);
@@ -182,7 +186,6 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	thd_curr->vcpu_ctx.vmcs.guest_cstar = msr_get(IA32_CSTAR);
 	thd_curr->vcpu_ctx.vmcs.guest_fmask = msr_get(IA32_FMASK);
 	
-	msr_set(IA32_GS_BASE, thd_curr->vcpu_ctx.vmcs.host_msr_gs_base);
 	msr_set(IA32_KERNEL_GSBASE, thd_curr->vcpu_ctx.vmcs.host_msr_gskernel_base);
 	msr_set(IA32_TSC_AUX, thd_curr->vcpu_ctx.vmcs.host_tsc_aux);
 	msr_set(IA32_STAR, thd_curr->vcpu_ctx.vmcs.host_star);

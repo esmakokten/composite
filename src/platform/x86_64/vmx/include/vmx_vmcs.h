@@ -59,10 +59,8 @@ struct vmx_vmcs {
 	u64_t guest_tsc_aux;
 	u64_t host_tsc_aux;
 
-	u64_t guest_msr_gs_base;
+	/* GS_BASE itself is swapped by the VMCS (GUEST_GS_BASE / HOST_GS_BASE). */
 	u64_t guest_msr_gskernel_base;
-
-	u64_t host_msr_gs_base;
 	u64_t host_msr_gskernel_base;
 
 	u64_t guest_star; 
