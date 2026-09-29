@@ -303,8 +303,6 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	u8_t *w_arch_capabilities_base = write_low_msr + 33;
 	*r_arch_capabilities_base = 0XFB;
 
-	vmcs->host_msr_gskernel_base = msr_get(IA32_KERNEL_GSBASE);
-
 	return;
 }
 
@@ -407,7 +405,24 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 static void
 vmx_owner_switch(struct thread *thd)
 {
+	struct thread *prev = vmx_core_owner[get_cpuid()];
+	u64_t          kgs;
+
 	load_vmcs(get_vmcs(&thd->vcpu_ctx)->vmcs);
+
+	/*
+	 * IA32_KERNEL_GS_BASE: the loaded value belongs to the previous owner
+	 * (or is the host's user base, 0, if there was none). SWAPGS and
+	 * WRGSBASE change it in the guest with no MSR write and no exit, so
+	 * interception cannot track it: one read at the switch is the only way
+	 * to know it. Write the new owner's value only if it differs.
+	 */
+	kgs = msr_get(IA32_KERNEL_GSBASE);
+	if (prev) prev->vcpu_ctx.vmcs.guest_msr_gskernel_base = kgs;
+	if (kgs != thd->vcpu_ctx.vmcs.guest_msr_gskernel_base) {
+		msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
+	}
+
 	vmx_core_owner[get_cpuid()] = thd;
 }
 
@@ -451,6 +466,18 @@ vmx_thd_start_or_resume(struct thread *thd)
 	assert(thd->thd_type == THD_TYPE_VM);
 	/* A vCPU never moves between cores (threads are pinned); a VMCS is current on one core only. */
 	assert(thd->cpuid == get_cpuid());
+	/*
+	 * Invariant (the swapgs bracket): a VM entry happens only in system-call
+	 * context, after the entry swapgs (entry.S sysenter_entry), and a VM exit
+	 * returns to user level through restore_from_vm, which executes the
+	 * matching one. The pair brackets the guest, so IA32_KERNEL_GS_BASE
+	 * holds the loaded vCPU's value at every entry and every exit, while the
+	 * host's own kernel GS base sits in GS_BASE for the duration of the
+	 * system call. An entry from interrupt context would hand the guest the
+	 * host's kernel base and the host per-CPU pointer to the guest. Checked
+	 * in the count flavour: after the entry swapgs, GS_BASE is this core's
+	 * kernel stack info.
+	 */
 	
 	VMX_DEBUG("Starting or resuming VM thread: 0x%p, tid: %u, coreid:%u\n", thd, thd->tid, thd->cpuid);
 

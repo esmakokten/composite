@@ -59,9 +59,12 @@ struct vmx_vmcs {
 	u64_t guest_tsc_aux;
 	u64_t host_tsc_aux;
 
-	/* GS_BASE itself is swapped by the VMCS (GUEST_GS_BASE / HOST_GS_BASE). */
+	/*
+	 * GS_BASE itself is swapped by the VMCS (GUEST_GS_BASE / HOST_GS_BASE).
+	 * KERNEL_GS_BASE stays loaded; this is the value of a vCPU that does not
+	 * own its core, written back at the owner switch that took it off.
+	 */
 	u64_t guest_msr_gskernel_base;
-	u64_t host_msr_gskernel_base;
 
 	u64_t guest_star; 
 	u64_t host_star;
