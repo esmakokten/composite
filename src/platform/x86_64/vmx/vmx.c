@@ -53,9 +53,9 @@ vmx_env_init(void)
 }
 
 void
-vmx_host_state_init(void)
+vmx_host_state_init(struct thread *thd)
 {
-	u64_t tmp64;
+	u64_t tmp64, fs_base;
 	u32_t eax, edx;
 
 	CR_GET(cr0, &tmp64);
@@ -79,7 +79,16 @@ vmx_host_state_init(void)
 	vmwrite(HOST_FS, SEL_KDSEG);
 	vmwrite(HOST_GS, SEL_KDSEG);
 	vmwrite(HOST_TR, SEL_TSS);
-	vmwrite(HOST_FS_BASE, get_fs_base());
+	/*
+	 * The host's FS base belongs to the thread that runs after the exit.
+	 * It is written once here, and vcpu->tls is set to the same value so
+	 * that the thread switch to the handler sees "already correct" and
+	 * writes nothing (invariant: vcpu->tls == HOST_FS_BASE, always). Rung
+	 * R17 makes the field follow the handler thread.
+	 */
+	fs_base = get_fs_base();
+	vmwrite(HOST_FS_BASE, fs_base);
+	thd->tls = fs_base;
 	/*
 	 * The host's GS base belongs to the core and never changes: after the
 	 * system-call swapgs it is this core's kernel stack info, which is what
@@ -450,7 +459,7 @@ vmx_thd_start_or_resume(struct thread *thd)
 	vmx_resume(thd);
 	assert(thd->vcpu_ctx.state == VM_THD_STATE_STOPPED);
 
-	vmx_host_state_init();
+	vmx_host_state_init(thd);
 	vmx_guest_state_init();
 	vmx_pinbased_ctl_init();
 	vmx_procbased_ctl_init();

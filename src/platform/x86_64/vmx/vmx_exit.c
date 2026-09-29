@@ -236,8 +236,15 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	/* FIXME: handle vcpu execution time correctly, this also seems should add into VMM thread */
 	thd_curr->exec += 1000;
 
-	/* Save fs for vcpu, this will be restoed later in the thread switch path, thus safe */
-	thd_curr->tls = msr_get(IA32_FS_BASE);
+	/*
+	 * No FS_BASE read here. By the first host instruction the exit has
+	 * already stored the guest's base into GUEST_FS_BASE and loaded
+	 * FS.base from HOST_FS_BASE, so a read returned the host's own value
+	 * (checked: EVALCHK in the count flavour). Its one effect was to keep
+	 * vcpu->tls equal to HOST_FS_BASE for the TLS compare in
+	 * cap_thd_switch(); that value is assigned where HOST_FS_BASE is
+	 * written (vmx_host_state_init). Invariant: vcpu->tls == HOST_FS_BASE.
+	 */
 
 	if (reason_nr == VM_EXIT_REASON_EXTERNAL_INTERRUPT) {
 		u64_t intr_info;
