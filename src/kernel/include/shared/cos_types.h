@@ -125,6 +125,7 @@ typedef enum {
 	CAPTBL_OP_VM_LAPIC_ACTIVATE,
 	CAPTBL_OP_VM_SHARED_MEM_ACTIVATE,
 	CAPTBL_OP_VM_VMCB_ACTIVATE,
+	CAPTBL_OP_VM_VCPU_MSR_SET, /* "this vCPU's value for register R is V": thd cap, VM_VCPU_MSR_*, value */
 	CAPTBL_OP_COMPACTIVATE,
 	CAPTBL_OP_COMPDEACTIVATE,
 	CAPTBL_OP_SINVACTIVATE,
@@ -623,6 +624,21 @@ struct vm_pi_desc {
 } __attribute__((aligned(CACHE_LINE), packed));
 
 #define MAX_VM_EXIT_REASONS 70
+
+/*
+ * Registers a VMM may hand the kernel a vCPU's value for (CAPTBL_OP_VM_VCPU_MSR_SET).
+ * TSC_AUX is guest-owned: the value stays loaded while the vCPU owns its core and
+ * is written at an owner switch. The others are host-critical: the kernel keeps
+ * the host's value loaded unless the guest's differs, in which case that vCPU
+ * takes a swap at every entry and exit (the fallback).
+ */
+enum vm_vcpu_msr {
+	VM_VCPU_MSR_TSC_AUX = 0,
+	VM_VCPU_MSR_STAR,
+	VM_VCPU_MSR_LSTAR,
+	VM_VCPU_MSR_FMASK,
+	VM_VCPU_MSR_MAX,
+};
 struct vm_vcpu_shared_region {
 	u64_t cr2;
 

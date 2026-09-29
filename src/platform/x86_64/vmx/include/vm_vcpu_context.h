@@ -20,3 +20,4 @@ void vm_env_init(void);
 void vm_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb);
 void vm_thd_exec(struct thread *thd);
 void vm_thd_deinit(struct thread *thd);
+int  vm_thd_msr_set(struct thread *thd, u32_t sel, u64_t val);

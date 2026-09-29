@@ -1633,6 +1633,12 @@ cos_thd_mod(struct cos_compinfo *ci, thdcap_t tc, void *tlsaddr)
 	return call_cap_op(ci->captbl_cap, CAPTBL_OP_THDTLSSET, tc, (word_t)tlsaddr, 0, 0);
 }
 
+int
+cos_vm_vcpu_msr_set(captblcap_t ct, thdcap_t vcpu, u32_t sel, u64_t val)
+{
+	return call_cap_op(ct, CAPTBL_OP_VM_VCPU_MSR_SET, vcpu, sel, (word_t)val, 0);
+}
+
 /* FIXME: problems when we got to 64 bit systems with the return value */
 int
 cos_introspect(struct cos_compinfo *ci, capid_t cap, unsigned long op)

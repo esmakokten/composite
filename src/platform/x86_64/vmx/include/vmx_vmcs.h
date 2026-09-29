@@ -56,8 +56,13 @@ struct vmx_vmcs {
 	 */
 	void *msr_bitmap;
 
+	/*
+	 * TSC_AUX: guest writes are intercepted and land here through
+	 * CAPTBL_OP_VM_VCPU_MSR_SET; reads pass through. The value stays loaded
+	 * while the vCPU owns its core, and is written at the owner switch only
+	 * if it differs from what the core holds (vmx_core_tsc_aux).
+	 */
 	u64_t guest_tsc_aux;
-	u64_t host_tsc_aux;
 
 	/*
 	 * GS_BASE itself is swapped by the VMCS (GUEST_GS_BASE / HOST_GS_BASE).
@@ -79,6 +84,7 @@ struct vmx_vmcs {
 void vmx_env_init(void);
 void vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb);
 void vmx_thd_deinit(struct thread *thd);
+int  vmx_thd_msr_set(struct thread *thd, u32_t sel, u64_t val);
 void vmx_host_state_init(struct thread *thd);
 void vmx_guest_state_init(void);
 void vmx_thd_start_or_resume(struct thread *thd);

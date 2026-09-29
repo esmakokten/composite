@@ -1364,6 +1364,16 @@ static sword_t __attribute__((noinline)) composite_syscall_slowpath(struct pt_re
 			if (ret) cos_throw(err, -EINVAL);
 			break;
 		}
+		case CAPTBL_OP_VM_VCPU_MSR_SET: {
+			capid_t thd_cap = __userregs_get1(regs);
+			u32_t   sel     = __userregs_get2(regs);
+			u64_t   val     = __userregs_get3(regs);
+
+			assert(op_cap->captbl);
+			ret = vm_vcpu_msr_set(op_cap->captbl, thd_cap, sel, val);
+			if (ret) cos_throw(err, ret);
+			break;
+		}
 		case CAPTBL_OP_THDDEACTIVATE_ROOT: {
 			livenessid_t lid           = __userregs_get2(regs);
 			capid_t      pgtbl_cap     = __userregs_get3(regs);

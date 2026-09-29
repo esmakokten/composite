@@ -185,6 +185,7 @@ sched_tok_t cos_sched_sync(void);
  */
 int cos_switch(thdcap_t c, tcap_t t, tcap_prio_t p, tcap_time_t r, arcvcap_t rcv, sched_tok_t stok);
 int cos_thd_mod(struct cos_compinfo *ci, thdcap_t c, void *tls_addr); /* set tls addr of thd in captbl */
+int cos_vm_vcpu_msr_set(captblcap_t ct, thdcap_t vcpu, u32_t sel, u64_t val); /* a vCPU's value for a VM_VCPU_MSR_* register; ct holds the vCPU cap */
 
 /*
  * returns 0 on success and errno on failure (the rcv thread will not be sent a notification):

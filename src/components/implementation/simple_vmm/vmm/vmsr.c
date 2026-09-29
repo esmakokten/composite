@@ -1,5 +1,23 @@
 #include <vmrt.h>
+#include <capmgr.h>
 #include <vmx_msr.h>
+
+/*
+ * Hand the kernel this vCPU's value for a register the exit path no longer
+ * swaps (CAPTBL_OP_VM_VCPU_MSR_SET). The kernel validates it; a refusal is
+ * logged and the write is dropped, as this VMM cannot inject #GP.
+ */
+static void
+vcpu_msr_set(struct vmrt_vm_vcpu *vcpu, u32_t sel, u64_t val, const char *name)
+{
+	/*
+	 * Through the capability manager: the operation is invoked on a
+	 * capability table, and this component holds no capability to one.
+	 */
+	if (capmgr_vm_vcpu_msr_set(vcpu->tid, sel, val)) {
+		printc("[vmm] %s write %llx refused by the kernel\n", name, (unsigned long long)val);
+	}
+}
 
 void 
 rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
@@ -232,6 +250,17 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		/* MTRRs can be ingored in Linux and Linux knows it is a virtual environment */
 		goto done;
 	}	
+	case MSR_IA32_TSC_AUX:
+	{
+		/*
+		 * Intercepted so the kernel always knows the loaded value: the guest's
+		 * value stays in the register across exits and the kernel writes it
+		 * only when a different vCPU takes the core. Linux writes it once per
+		 * CPU (its cpu_number) at boot. Reads pass through.
+		 */
+		vcpu_msr_set(vcpu, VM_VCPU_MSR_TSC_AUX, (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32), "TSC_AUX");
+		goto done;
+	}
 	case MSR_IA32_TSC_DEADLINE: {
 		u64_t tsc_future, curr_tsc;
 		rdtscll(curr_tsc);

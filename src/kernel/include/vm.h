@@ -163,6 +163,26 @@ done:
 	return ret;
 }
 
+/*
+ * A VMM hands the kernel a vCPU's value for one of the registers the exit
+ * path no longer swaps. The caller holds the vCPU's thread capability and runs
+ * on the vCPU's core, like every other operation on a thread. User level is
+ * not trusted: the value is validated per register in the platform code, and a
+ * refused value changes nothing.
+ */
+static int
+vm_vcpu_msr_set(struct captbl *ct, capid_t thd_cap, u32_t sel, u64_t val)
+{
+	struct cap_thd *tc;
+
+	tc = (struct cap_thd *)captbl_lkup(ct, thd_cap);
+	if (!tc || tc->h.type != CAP_THD || get_cpuid() != tc->cpuid) return -EINVAL;
+	if (!tc->t || tc->t->thd_type != THD_TYPE_VM) return -EINVAL;
+	if (sel >= VM_VCPU_MSR_MAX) return -EINVAL;
+
+	return vm_thd_msr_set(tc->t, sel, val);
+}
+
 static void
 vm_cap_init(void)
 {

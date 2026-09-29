@@ -44,6 +44,36 @@ static char vm_env_page[PAGE_SIZE_4K] __attribute__((aligned(PAGE_SIZE_4K)));
  */
 static struct thread *vmx_core_owner[NUM_CPU];
 
+/*
+ * What IA32_TSC_AUX holds on each core. Every write to the register goes
+ * through the kernel (the host's at chal_cpu_init(), the guest's through the
+ * intercepted WRMSR), so the value is known without a read. It starts as the
+ * core id, which chal_cpu_init() wrote; nothing in the host reads it back
+ * since rung R05.
+ */
+static u64_t vmx_core_tsc_aux[NUM_CPU];
+static u8_t  vmx_core_tsc_aux_known[NUM_CPU];
+
+static inline u64_t
+vmx_core_tsc_aux_loaded(void)
+{
+	cpuid_t cpu = get_cpuid();
+
+	if (unlikely(!vmx_core_tsc_aux_known[cpu])) {
+		vmx_core_tsc_aux[cpu]       = cpu; /* chal_cpu_init(): writemsr(MSR_TSC_AUX, coreid, 0) */
+		vmx_core_tsc_aux_known[cpu] = 1;
+	}
+
+	return vmx_core_tsc_aux[cpu];
+}
+
+static inline void
+vmx_core_tsc_aux_write(u64_t val)
+{
+	msr_set(IA32_TSC_AUX, val);
+	vmx_core_tsc_aux[get_cpuid()] = val;
+}
+
 void
 vmx_env_init(void)
 {
@@ -289,9 +319,16 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	u8_t *r_fs_base = read_high_msr + 32;
 	u8_t *w_fs_base = write_high_msr + 32;
 
-	/* Bypass IA32_FS_BASE, IA32_GS_BASE, IA32_KERNEL_GS_BASE, MSR_IA32_TSC_AUX */
+	/*
+	 * Byte 32 covers 0xC0000100..0xC0000107, one bit each; a set bit exits.
+	 * Reads of FS_BASE, GS_BASE, KERNEL_GS_BASE and TSC_AUX pass through
+	 * (0xF0). Writes of the first three pass through too; a write of
+	 * TSC_AUX (bit 3) is intercepted (0xF8), so that the kernel always
+	 * knows the value and never has to read it: the VMM hands it over with
+	 * CAPTBL_OP_VM_VCPU_MSR_SET. Linux writes it once per CPU at boot.
+	 */
 	*r_fs_base = 0XF0;
-	*w_fs_base = 0XF0;
+	*w_fs_base = 0XF8;
 
 	u8_t *r_syscall_base = read_high_msr + 16;
 	u8_t *w_syscall_base = write_high_msr + 16;
@@ -330,7 +367,6 @@ vmx_thd_state_init(struct thread *thd)
 	/* Will never change the microcode later */
 	shared_region->microcode_version = get_microcode();
 
-	thd->vcpu_ctx.vmcs.host_tsc_aux = msr_get(IA32_TSC_AUX);
 	thd->vcpu_ctx.vmcs.host_star = msr_get(IA32_STAR);
 	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
 	thd->vcpu_ctx.vmcs.host_cstar = msr_get(IA32_CSTAR);
@@ -423,7 +459,32 @@ vmx_owner_switch(struct thread *thd)
 		msr_set(IA32_KERNEL_GSBASE, thd->vcpu_ctx.vmcs.guest_msr_gskernel_base);
 	}
 
+	/* TSC_AUX: no read, the loaded value is known; write only if the new owner's differs. */
+	if (vmx_core_tsc_aux_loaded() != thd->vcpu_ctx.vmcs.guest_tsc_aux) {
+		vmx_core_tsc_aux_write(thd->vcpu_ctx.vmcs.guest_tsc_aux);
+	}
+
 	vmx_core_owner[get_cpuid()] = thd;
+}
+
+/*
+ * The VMM's "this vCPU's value for register R is V" (CAPTBL_OP_VM_VCPU_MSR_SET).
+ * Validated here; a refused value changes nothing.
+ */
+int
+vmx_thd_msr_set(struct thread *thd, u32_t sel, u64_t val)
+{
+	switch (sel) {
+	case VM_VCPU_MSR_TSC_AUX:
+		/* The upper 32 bits are reserved; hardware would #GP on them. */
+		if (val >> 32) return -EINVAL;
+		thd->vcpu_ctx.vmcs.guest_tsc_aux = val;
+		/* Load at once if this vCPU owns the core; otherwise the owner switch will. */
+		if (vmx_core_owner[get_cpuid()] == thd && vmx_core_tsc_aux_loaded() != val) vmx_core_tsc_aux_write(val);
+		return 0;
+	default:
+		return -EINVAL;
+	}
 }
 
 /*
