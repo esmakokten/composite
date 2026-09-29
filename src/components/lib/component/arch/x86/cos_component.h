@@ -198,7 +198,9 @@ cos_cpuid(void)
 #if NUM_CPU == 1
 	return 0;
 #endif
-	return __rdpid();
+	/* See the x86_64 version: RDPID reads IA32_TSC_AUX, which the VM exit
+	 * path no longer preserves. Take the core id from the stack. */
+	return get_stk_data(CPUID_OFFSET);
 }
 
 static inline coreid_t

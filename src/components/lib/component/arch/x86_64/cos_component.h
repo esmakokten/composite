@@ -254,6 +254,12 @@ get_stk_data(int offset)
 
 #define GET_CURR_CPU cos_cpuid()
 
+/*
+ * NOTE: this reads IA32_TSC_AUX. Once the VM exit path stops restoring it
+ * (rung R11), the register holds the guest's value while host components run
+ * on that core, so it must not be used to obtain a core id: cos_cpuid() takes
+ * the id from the thread stack instead.
+ */
 static inline u64_t
 cos_rdtscp(coreid_t *coreid, u16_t *numaid)
 {
@@ -273,11 +279,14 @@ cos_cpuid(void)
 #if NUM_CPU == 1
 	return 0;
 #endif
-	coreid_t coreid;
-	u16_t    numaid;
-	cos_rdtscp(&coreid, &numaid);
-
-	return (long)coreid;
+	/*
+	 * The core id lives on the thread stack beside the thread id, the way
+	 * cos_get_thd_id() reads it and the way ARM already does. This used to
+	 * execute RDTSCP, which reads IA32_TSC_AUX: a register the VM exit path
+	 * no longer restores (rung R11), so on a core that has run a vCPU a
+	 * component would read the guest's value and corrupt per-core state.
+	 */
+	return get_stk_data(CPUID_OFFSET);
 }
 
 static inline coreid_t
