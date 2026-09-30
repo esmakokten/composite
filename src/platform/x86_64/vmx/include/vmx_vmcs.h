@@ -80,6 +80,15 @@ struct vmx_vmcs {
 	 * user level can change in between. fb_mask is zero for a Linux guest
 	 * without page-table isolation, and the common path is one test.
 	 */
+	/*
+	 * The two per-thread host fields, kept equal to the handler thread's:
+	 * the page table (with its PCID) of the component the handler is
+	 * executing in, and its TLS pointer. Compared at every entry, written
+	 * only on change (rung R17). See vmx_host_state_follow().
+	 */
+	u64_t host_cr3;
+	u64_t host_fs_base;
+
 	u64_t fb_star;
 	u64_t fb_lstar;
 	u64_t fb_fmask;

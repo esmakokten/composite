@@ -143,6 +143,13 @@ vm_vmcb_activate(struct captbl *t, capid_t cap, capid_t capin, capid_t vmcs_cap,
 
 	handler_thd = (struct cap_thd *)captbl_lkup(t, handler_thd_cap);
 	if (unlikely(!handler_thd || handler_thd->h.type != CAP_THD || !handler_thd->t)) return -EINVAL;
+	/*
+	 * The handler must be a host thread. HOST_CR3 follows the handler's
+	 * component's page table; a vCPU offered as a handler would put an EPT
+	 * root into CR3 at the first exit. One compare at activation, off the
+	 * measured path; input validation for a hazard the rule introduces.
+	 */
+	if (unlikely(handler_thd->t->thd_type == THD_TYPE_VM)) return -EINVAL;
 
 	vmcb = (struct cap_vm_vmcb *)__cap_capactivate_pre(t, cap, capin, CAP_VM_VMCB, &ret);
 	if (!vmcb) cos_throw(done, ret);

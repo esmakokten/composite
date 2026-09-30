@@ -97,9 +97,8 @@ vmx_host_state_init(struct thread *thd)
 	vmwrite(HOST_CR0, tmp64);
 	VMX_DEBUG("VMX_HOST_CR0: 0x%p\n", tmp64);
 
-	CR_GET(cr3, &tmp64);
-	vmwrite(HOST_CR3, tmp64);
-	VMX_DEBUG("VMX_HOST_CR3: 0x%p\n", tmp64);
+	/* HOST_CR3 follows the handler thread; written by vmx_host_state_follow() at every entry. */
+	get_vmcs(&thd->vcpu_ctx)->host_cr3 = 0;
 
 	CR_GET(cr4, &tmp64);
 	vmwrite(HOST_CR4, tmp64);
@@ -115,15 +114,16 @@ vmx_host_state_init(struct thread *thd)
 	vmwrite(HOST_GS, SEL_KDSEG);
 	vmwrite(HOST_TR, SEL_TSS);
 	/*
-	 * The host's FS base belongs to the thread that runs after the exit.
-	 * It is written once here, and vcpu->tls is set to the same value so
-	 * that the thread switch to the handler sees "already correct" and
-	 * writes nothing (invariant: vcpu->tls == HOST_FS_BASE, always). Rung
-	 * R17 makes the field follow the handler thread.
+	 * The host's FS base belongs to the thread that runs after the exit:
+	 * the handler. It follows the handler thread's TLS pointer, written by
+	 * vmx_host_state_follow() at every entry, with vcpu->tls kept equal so
+	 * that the thread switch to the handler writes nothing (invariant:
+	 * vcpu->tls == HOST_FS_BASE, always).
 	 */
 	fs_base = get_fs_base();
 	vmwrite(HOST_FS_BASE, fs_base);
 	thd->tls = fs_base;
+	get_vmcs(&thd->vcpu_ctx)->host_fs_base = fs_base;
 	/*
 	 * The host's GS base belongs to the core and never changes: after the
 	 * system-call swapgs it is this core's kernel stack info, which is what
@@ -450,6 +450,50 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 }
 
 /*
+ * The host state a VM exit loads follows the handler thread: HOST_CR3 is the
+ * page table, under its own PCID, of the component the handler is executing
+ * in; HOST_FS_BASE is the handler's TLS pointer. Compared at every entry,
+ * written only on change (two compares on the common path). This makes the
+ * exit's hardware load install the handler's table by rule, where main
+ * relied on a CR3 snapshot taken at the first dispatch, under whatever thread
+ * and PCID that happened to be.
+ *
+ * The top of the current thread's invocation stack is cached per CPU, not in
+ * the thread, so when the handler is the dispatcher (the common case: the
+ * handler's cos_switch enters the vCPU) the cached top is the one to read.
+ *
+ * TODO(liveness): a VM exit loads CR3 in hardware with no check. HOST_CR3
+ * names the handler's table without ltbl_isalive(). Safe only while no
+ * handler's component is deactivated and page-table frames are not recycled,
+ * which is the case today (no component hosting a vCPU handler is ever
+ * deactivated; on x86_64 a page-table frame is never released). When either
+ * changes, check the component's liveness here and refuse the entry if dead.
+ */
+static inline void
+vmx_host_state_follow(struct thread *thd, struct cos_cpu_local_info *cos_info)
+{
+	struct vmx_vmcs   *vmcs    = get_vmcs(&thd->vcpu_ctx);
+	struct thread     *handler = thd->exception_handler;
+	struct pgtbl_info *pt;
+	u64_t              cr3;
+
+	/* The loaded page table is always the one on the kernel invocation stack, user-level invocations or not. */
+	if (likely(handler == thd_current(cos_info))) pt = &handler->invstk[curr_invstk_top(cos_info)].comp_info.pgtblinfo;
+	else                                          pt = &handler->invstk[handler->invstk_top].comp_info.pgtblinfo;
+
+	cr3 = (u64_t)pt->pgtbl | PROTDOM_ASID(pt->protdom);
+	if (unlikely(cr3 != vmcs->host_cr3)) {
+		vmwrite(HOST_CR3, cr3);
+		vmcs->host_cr3 = cr3;
+	}
+	if (unlikely(handler->tls != vmcs->host_fs_base)) {
+		vmwrite(HOST_FS_BASE, handler->tls);
+		vmcs->host_fs_base = handler->tls;
+		thd->tls           = handler->tls;
+	}
+}
+
+/*
  * A different vCPU is entered on this core (or the first one after the core
  * was disowned): make its VMCS current. First launch takes this path too.
  */
@@ -583,6 +627,7 @@ vmx_thd_start_or_resume(struct thread *thd)
 	VMX_DEBUG("Starting or resuming VM thread: 0x%p, tid: %u, coreid:%u\n", thd, thd->tid, thd->cpuid);
 
 	if (unlikely(vmx_core_owner[get_cpuid()] != thd)) vmx_owner_switch(thd);
+	vmx_host_state_follow(thd, cos_cpu_local_info());
 
 	vmx_resume(thd);
 	assert(thd->vcpu_ctx.state == VM_THD_STATE_STOPPED);

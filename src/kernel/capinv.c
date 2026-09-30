@@ -403,6 +403,13 @@ cap_thd_switch(struct pt_regs *regs, struct thread *curr, struct thread *next, s
 	/* FIXME: trigger fault for the next thread, for now, return error */
 	if (unlikely(!ltbl_isalive(&next_ci->liveness))) {
 		assert(!(curr->state & THD_STATE_PREEMPTED));
+		/*
+		 * TODO(liveness): for a vCPU this branch asserts. The exit has
+		 * already loaded the handler's table (HOST_CR3) in hardware and
+		 * arrives here to switch to the handler; if a handler's component
+		 * can die while its guest runs, this must stop the vCPU and run the
+		 * scheduler instead of asserting. The case does not exist today.
+		 */
 		assert(curr->thd_type != THD_TYPE_VM);
 		__userregs_set(regs, -EFAULT, __userregs_getsp(regs), __userregs_getip(regs));
 		return 0;
