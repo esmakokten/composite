@@ -345,8 +345,15 @@ vmx_msr_bitmaps_init(struct thread *thd)
 	 */
 	u8_t *r_syscall_base = read_high_msr + 16;
 	u8_t *w_syscall_base = write_high_msr + 16;
-	*r_syscall_base = 0xFB; /* FMASK (bit 4) and STAR (bit 1) too: coincide with the host's, shadowed for reads */
-	*w_syscall_base = 0xFB;
+	/*
+	 * All four SYSCALL registers are intercepted both ways now (0xFF): STAR
+	 * and FMASK coincide with the host's, CSTAR is shadowed, and LSTAR (bit
+	 * 2) holds the fixed trampoline VA on both sides, with the VMM building
+	 * the guest's trampoline page at its LSTAR write. A guest read returns
+	 * the guest's own value from the VMM's shadow.
+	 */
+	*r_syscall_base = 0xFF;
+	*w_syscall_base = 0xFF;
 
 	/* Bypass MSR_IA32_ARCH_CAPABILITIES 0x10a, readonly */
 	u8_t *r_arch_capabilities_base = read_low_msr + 33;
@@ -379,8 +386,6 @@ vmx_thd_state_init(struct thread *thd)
 
 	/* Will never change the microcode later */
 	shared_region->microcode_version = get_microcode();
-
-	thd->vcpu_ctx.vmcs.host_lstar = msr_get(IA32_LSTAR);
 
 	return;
 }

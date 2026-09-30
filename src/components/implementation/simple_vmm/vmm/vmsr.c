@@ -4,6 +4,128 @@
 #include <vm_host_msr.h>
 
 /*
+ * ---------------------------------------------------------------------------
+ * IA32_LSTAR interception and the guest SYSCALL trampoline.
+ *
+ * IA32_LSTAR holds COS_SYSCALL_TRAMP_VA on both sides of a VM crossing, so
+ * the exit path never touches it. For the guest's own SYSCALL to still reach
+ * entry_SYSCALL_64:
+ *
+ *   - the guest's LSTAR write is intercepted and absorbed into a per-vCPU
+ *     shadow; hardware is never touched (a guest read returns the shadow);
+ *   - at that same intercept the VMM builds a one-page trampoline in the
+ *     guest at COS_SYSCALL_TRAMP_VA holding an indirect jump to the value
+ *     the guest just tried to write. The intercepted value IS how the VMM
+ *     learns the target: no build-time agreement, the guest binary untouched.
+ *
+ * Nothing is shared with the host but the number: different page tables,
+ * different physical frames. The frame is mapped execute-only in EPT
+ * (platform chal_pgtbl.c), so the guest can neither read nor rewrite it.
+ *
+ * Frames come from guest-physical memory the VMM maps but never told the
+ * guest about (see COS_GUEST_TRAMP_GPA in the kernel's chal_pgtbl.h): this
+ * intercept fires from syscall_init(), before the guest has a page
+ * allocator, so every frame must come from here.
+ *
+ * Page-table isolation (PTI) is deferred: SYSCALL does not switch CR3, so on
+ * a PTI guest the first instruction after it runs on the USER page tables and
+ * the trampoline would also have to be installed in the user half of the PGD
+ * pair; pti_init() clones only cpu_entry_area, .entry.text, espfix and
+ * vsyscall, not index 509. A composition declares a PTI guest with
+ * VM_GUEST_PTI=1; such a guest keeps its own LSTAR through the kernel's
+ * fallback swap (rung R16) instead of the trampoline.
+ * ---------------------------------------------------------------------------
+ */
+#include <string.h>
+
+#define COS_SYSCALL_TRAMP_VA  0xfffffe8000000000ULL
+#define TRAMP_PGD_IDX         509     /* (VA >> 39) & 511 */
+
+#define TRAMP_GPA_PAGE  0x04000000ULL /* == COS_GUEST_TRAMP_GPA; read + execute in EPT, not writable */
+#define TRAMP_GPA_PUD   0x04001000ULL
+#define TRAMP_GPA_PMD   0x04002000ULL
+#define TRAMP_GPA_PT    0x04003000ULL
+
+#define PTE_P  (1ULL << 0)
+#define PTE_W  (1ULL << 1)
+#define PTE_A  (1ULL << 5)
+#define PTE_D  (1ULL << 6)
+#define PTE_G  (1ULL << 8)	/* _PAGE_GLOBAL */
+
+#define CR3_ADDR_MASK 0x000ffffffffff000ULL
+
+#ifndef VM_GUEST_PTI
+#define VM_GUEST_PTI 0
+#endif
+
+static int
+lstar_canonical(u64_t v)
+{
+	/* 48-bit canonical: bits 63:47 must all match. */
+	u64_t hi = v >> 47;
+
+	return (hi == 0) || (hi == 0x1ffffULL);
+}
+
+static void
+guest_tramp_install(struct vmrt_vm_vcpu *vcpu, u64_t target)
+{
+	struct vmrt_vm_comp *vm = vcpu->vm;
+	volatile struct vm_vcpu_shared_region *regs = vcpu->shared_region;
+	u8_t  *pg  = (u8_t *)GPA2HVA(TRAMP_GPA_PAGE, vm);
+	u64_t *pt  = (u64_t *)GPA2HVA(TRAMP_GPA_PT, vm);
+	u64_t *pmd = (u64_t *)GPA2HVA(TRAMP_GPA_PMD, vm);
+	u64_t *pud = (u64_t *)GPA2HVA(TRAMP_GPA_PUD, vm);
+	u64_t *pgd = (u64_t *)GPA2HVA(regs->cr3 & CR3_ADDR_MASK, vm);
+	int    i;
+
+	/*
+	 * jmp *0x0(%rip) ; .quad target
+	 * Register-preserving: SYSCALL arrives with the user register file live
+	 * and RAX holding the syscall number, so a movabs into a register would
+	 * destroy it. The displacement is 0 because RIP already points at the
+	 * address slot.
+	 */
+	memset(pg, 0, PAGE_SIZE_4K);
+	pg[0] = 0xff;
+	pg[1] = 0x25;
+	pg[2] = 0x00;
+	pg[3] = 0x00;
+	pg[4] = 0x00;
+	pg[5] = 0x00;
+	*(u64_t *)&pg[6] = target;
+
+	for (i = 0; i < (int)(PAGE_SIZE_4K / sizeof(u64_t)); i++) {
+		pt[i] = pmd[i] = pud[i] = 0;
+	}
+
+	/*
+	 * Supervisor-only and not writable; SYSCALL raises CPL to 0 before the
+	 * fetch. Global, as Linux marks the pages it shares between its kernel
+	 * and user PGDs (mm/pti.c): this page is that class.
+	 */
+	pt[0]  = TRAMP_GPA_PAGE | PTE_P | PTE_G | PTE_A;
+	pmd[0] = TRAMP_GPA_PT   | PTE_P | PTE_W | PTE_A | PTE_D;
+	pud[0] = TRAMP_GPA_PMD  | PTE_P | PTE_W | PTE_A | PTE_D;
+
+	/* Linux's _KERNPG_TABLE, so a guest walker that checks pgd_bad() leaves it alone. */
+	pgd[TRAMP_PGD_IDX] = TRAMP_GPA_PUD | PTE_P | PTE_W | PTE_A | PTE_D;
+
+	/*
+	 * Deliberately not written: the PTI user-half entry,
+	 *     pgd[512 + TRAMP_PGD_IDX] = pgd[TRAMP_PGD_IDX];
+	 * On a non-PTI guest there is no second page in the PGD allocation and
+	 * the write would land in unrelated memory. A PTI guest is declared and
+	 * takes the fallback instead (see VM_GUEST_PTI above).
+	 */
+
+	printc("[vmm] LSTAR intercept: guest target %llx -> trampoline at %llx "
+	       "(gpa %llx, pgd[%d], kernel half only)\n",
+	       (unsigned long long)target, (unsigned long long)COS_SYSCALL_TRAMP_VA,
+	       (unsigned long long)TRAMP_GPA_PAGE, TRAMP_PGD_IDX);
+}
+
+/*
  * Hand the kernel this vCPU's value for a register the exit path no longer
  * swaps (CAPTBL_OP_VM_VCPU_MSR_SET). The kernel validates it; a refusal is
  * logged and the write is dropped, as this VMM cannot inject #GP.
@@ -43,6 +165,13 @@ rdmsr_handler(struct vmrt_vm_vcpu *vcpu)
 	{
 		regs->ax = (u32_t)vcpu->star_shadow;
 		regs->dx = (u32_t)(vcpu->star_shadow >> 32);
+		goto done;
+	}
+	case MSR_IA32_LSTAR:
+	{
+		/* The guest's own value, never the common trampoline VA. */
+		regs->ax = (u32_t)vcpu->lstar_shadow;
+		regs->dx = (u32_t)(vcpu->lstar_shadow >> 32);
 		goto done;
 	}
 	case MSR_IA32_EFER: 
@@ -240,6 +369,37 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 			printc("[vmm] FMASK write %llx differs from the host's %llx: no fallback yet\n",
 			       (unsigned long long)val, (unsigned long long)COS_HOST_FMASK);
 			VM_PANIC(vcpu);
+		}
+		goto done;
+	}
+	case MSR_IA32_LSTAR:
+	{
+		u64_t val = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
+
+		/*
+		 * Canonical-check before the value is used for anything. CVE-2014-3610
+		 * is this exact bug in KVM: an emulated WRMSR let a guest put a
+		 * non-canonical address into LSTAR and reach a real wrmsr, faulting
+		 * the host. Here the value never reaches hardware; the check keeps a
+		 * bad value out of the trampoline. #GP is not injected: the write is
+		 * refused and logged.
+		 */
+		if (!lstar_canonical(val)) {
+			printc("[vmm] LSTAR write %llx is non-canonical, refused\n", (unsigned long long)val);
+			goto done;
+		}
+		vcpu->lstar_shadow = val;
+		if (VM_GUEST_PTI) {
+			printc("[vmm] LSTAR write %llx on a PTI guest: no trampoline, fallback not yet available\n",
+			       (unsigned long long)val);
+			VM_PANIC(vcpu);
+		}
+		if (!vcpu->tramp_installed) {
+			guest_tramp_install(vcpu, val);
+			vcpu->tramp_installed = 1;
+		} else {
+			/* A later write only retargets the jump; the VMM writes through its own mapping. */
+			*(u64_t *)((u8_t *)GPA2HVA(TRAMP_GPA_PAGE, vcpu->vm) + 6) = val;
 		}
 		goto done;
 	}

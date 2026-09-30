@@ -47,6 +47,13 @@ struct vmrt_vm_vcpu {
 	u64_t cstar_shadow;
 	u64_t fmask_shadow;
 	u64_t star_shadow;
+	/*
+	 * LSTAR: the guest's write is absorbed here and hardware keeps holding
+	 * the host's trampoline VA; the VMM builds the guest a trampoline page
+	 * at that VA that jumps to this value. A read is served from here.
+	 */
+	u64_t lstar_shadow;
+	u8_t  tramp_installed;
 };
 
 struct vmrt_vm_comp {
@@ -69,7 +76,8 @@ struct vmrt_vm_comp {
 	u16_t vm_mac_id;
 };
 
-#define VMRT_GPA2HVA(gpa, vm, offset) ((gpa - offset) + vm->guest_addr)
+/* Arguments are parenthesised: `cr3 & MASK` passed bare used to parse as `cr3 & (MASK - offset)`. */
+#define VMRT_GPA2HVA(gpa, vm, offset) (((gpa) - (offset)) + (vm)->guest_addr)
 #define GPA2HVA(gpa, vm) VMRT_GPA2HVA(gpa, vm, PAGE_SIZE_4K)
 
 typedef void vmrt_exception_handler(struct vmrt_vm_vcpu *vcpu);

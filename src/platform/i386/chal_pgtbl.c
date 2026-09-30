@@ -729,6 +729,25 @@ chal_pgtbl_cpy(struct captbl *t, capid_t cap_to, capid_t capin_to, struct cap_pg
 
 	if (unlikely((((struct cap_pgtbl *)ctto)->type) == PGTBL_TYPE_EPT)) {
 		flags = chal_vm_pgtbl_def_flag();
+#if defined(__x86_64__)
+		/*
+		 * Guest memory is aliased into the EPT one page at a time from
+		 * guest-physical PAGE_SIZE_4K upward, so the EPT address of a GPA
+		 * is (first alias) + (gpa - PAGE_SIZE_4K). The base is learned from
+		 * the first EPT mapping rather than assumed. The trampoline frame
+		 * is mapped execute-only (COS_GUEST_TRAMP_GPA, chal_pgtbl.h).
+		 */
+		/*
+		 * capin_to is the guest-physical address. (An earlier form derived it from
+		 * the first EPT mapping, which is a page at guest-physical 0 and not guest
+		 * RAM, and so restricted the page below the trampoline.) The page cannot be
+		 * execute-only: `jmp *0(%rip)` loads its target from it, a data read.
+		 */
+		if (unlikely(capin_to == COS_GUEST_TRAMP_GPA)) {
+			flags = x86_EPT_READ_EXEC;
+			printk("cos: EPT read+execute, not writable for the guest trampoline (gpa %lx)\n", (unsigned long)capin_to);
+		}
+#endif
 	} else {
 		/* sanitize the input flags */
 		flags = chal_pgtbl_flag_update(flags, flags_in);

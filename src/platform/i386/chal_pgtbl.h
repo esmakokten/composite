@@ -50,6 +50,35 @@ typedef enum {
 	x86_EPT_VM_DEF			= x86_EPT_READ_ACCESS | x86_EPT_WRITE_ACCCESS | x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE | x86_EPT_MEM_WB | x86_EPT_IGNORE_PAT_MEM_TYPE,
 } ept_pgtbl_flags_x86_t;
 
+/*
+ * Guest-physical frame holding the SYSCALL trampoline the VMM builds at the
+ * IA32_LSTAR intercept (simple_vmm/vmm/vmsr.c). Mapped EXECUTE-ONLY in EPT at
+ * map time: the guest may fetch from it but cannot read or write it, so it can
+ * neither discover nor rewrite where its own SYSCALL lands. Execute-only EPT
+ * translations are supported on the Xeon 8160 (IA32_VMX_EPT_VPID_CAP bit 0).
+ *
+ * The VMM writes the page through its own host mapping of guest memory, which
+ * does not go through EPT. Only this page is execute-only; its PUD/PMD/PT
+ * frames stay readable, because the guest's page walker reads them.
+ *
+ * Re-derived for the image builder's map: the booter reports RAM from
+ * 0x100000 for 60 MB (top 0x3d00000), the VMM maps 310 MB, so 0x4000000 is
+ * the first 16 MB-aligned frame above every range the guest is told about
+ * and still backed. Memory the guest was never told about is never probed.
+ *
+ * The permission is applied where the mapping is made (chal_pgtbl_cpy) and
+ * not afterwards: the generic page-table layer's presence bit is bit 0, which
+ * in an EPT entry is the READ permission, so an execute-only entry looks
+ * absent to it and a later lookup of this GPA returns NULL. The two table
+ * types are unified by one predicate that is right for only one of them.
+ */
+#define COS_GUEST_TRAMP_GPA	0x04000000UL
+
+#define x86_EPT_READ_EXEC	(x86_EPT_READ_ACCESS | x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE \
+				 | x86_EPT_MEM_WB | x86_EPT_IGNORE_PAT_MEM_TYPE)
+#define x86_EPT_EXEC_ONLY	(x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE \
+				 | x86_EPT_MEM_WB | x86_EPT_IGNORE_PAT_MEM_TYPE)
+
 /**
  * Use the passed in page, but make sure that we only use the passed
  * in page once.
