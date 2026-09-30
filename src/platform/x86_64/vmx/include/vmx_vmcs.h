@@ -71,7 +71,24 @@ struct vmx_vmcs {
 	 */
 	u64_t guest_msr_gskernel_base;
 
+	/*
+	 * The fallback swap. A guest whose STAR, LSTAR or FMASK cannot coincide
+	 * with the host's keeps its own value through two writes per crossing
+	 * of that vCPU only: the guest's at entry, the host's at exit. Both
+	 * values are the kernel's own record (fb_* validated at
+	 * CAPTBL_OP_VM_VCPU_MSR_SET; the host's are constants), never anything
+	 * user level can change in between. fb_mask is zero for a Linux guest
+	 * without page-table isolation, and the common path is one test.
+	 */
+	u64_t fb_star;
+	u64_t fb_lstar;
+	u64_t fb_fmask;
+	u8_t  fb_mask;
 };
+
+#define VMX_FB_STAR  (1 << 0)
+#define VMX_FB_LSTAR (1 << 1)
+#define VMX_FB_FMASK (1 << 2)
 
 void vmx_env_init(void);
 void vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb);

@@ -489,13 +489,38 @@ vmx_owner_switch(struct thread *thd)
 int
 vmx_thd_msr_set(struct thread *thd, u32_t sel, u64_t val)
 {
+	struct vmx_vmcs *vmcs = get_vmcs(&thd->vcpu_ctx);
+
 	switch (sel) {
 	case VM_VCPU_MSR_TSC_AUX:
 		/* The upper 32 bits are reserved; hardware would #GP on them. */
 		if (val >> 32) return -EINVAL;
-		thd->vcpu_ctx.vmcs.guest_tsc_aux = val;
+		vmcs->guest_tsc_aux = val;
 		/* Load at once if this vCPU owns the core; otherwise the owner switch will. */
 		if (vmx_core_owner[get_cpuid()] == thd && vmx_core_tsc_aux_loaded() != val) vmx_core_tsc_aux_write(val);
+		return 0;
+	/*
+	 * The host-critical three: a value equal to the host's clears that
+	 * register's swap bit, any other value sets it. Passing 0 is safe for
+	 * the host: it is loaded only while the guest runs, and the exit
+	 * restores the host's constant from the kernel's record.
+	 */
+	case VM_VCPU_MSR_STAR:
+		vmcs->fb_star = val;
+		if (val == COS_HOST_STAR) vmcs->fb_mask &= ~VMX_FB_STAR;
+		else vmcs->fb_mask |= VMX_FB_STAR;
+		return 0;
+	case VM_VCPU_MSR_LSTAR:
+		/* Non-canonical LSTAR: the CVE-2014-3610 class, a #GP in the host on the write. */
+		if ((val >> 47) != 0 && (val >> 47) != 0x1ffffULL) return -EINVAL;
+		vmcs->fb_lstar = val;
+		if (val == COS_SYSCALL_TRAMP_VA) vmcs->fb_mask &= ~VMX_FB_LSTAR;
+		else vmcs->fb_mask |= VMX_FB_LSTAR;
+		return 0;
+	case VM_VCPU_MSR_FMASK:
+		vmcs->fb_fmask = val;
+		if (val == COS_HOST_FMASK) vmcs->fb_mask &= ~VMX_FB_FMASK;
+		else vmcs->fb_mask |= VMX_FB_FMASK;
 		return 0;
 	default:
 		return -EINVAL;

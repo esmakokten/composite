@@ -111,11 +111,13 @@ vmx_resume(struct thread *thd)
 	/* TSC_AUX: stays loaded; writes are intercepted; the owner switch handles a change of vCPU. */
 	/*
 	 * STAR, FMASK: intercepted both ways; the guest's values coincide with
-	 * the host's (COS_HOST_STAR, COS_HOST_FMASK). CSTAR: intercepted both
-	 * ways, shadowed in the VMM, never loaded. LSTAR: intercepted both ways;
-	 * both sides hold COS_SYSCALL_TRAMP_VA and each address space routes it
-	 * to its own entry. No MSR is read or written here.
+	 * the host's (COS_HOST_STAR, COS_HOST_FMASK). LSTAR: intercepted both
+	 * ways; both sides hold COS_SYSCALL_TRAMP_VA and each address space
+	 * routes it to its own entry. No MSR is read or written here, unless
+	 * this guest's value for one of them differs: then that register is
+	 * written at entry and exit, for this vCPU only (the fallback).
 	 */
+	if (unlikely(thd->vcpu_ctx.vmcs.fb_mask)) vmx_fallback_load_guest(&thd->vcpu_ctx.vmcs);
 
 	/* Restore GPs for vcpu */
 	__asm__ __volatile__(
@@ -179,6 +181,13 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 
 	/* The exit just reloaded CR0 from the HOST_CR0 snapshot; resync the FPU shadow. */
 	fpu_shadow_resync();
+
+	/*
+	 * A diverged guest: put the host's SYSCALL registers back before any
+	 * host code can execute SYSCALL. The values come from the kernel's own
+	 * record, never from user level.
+	 */
+	if (unlikely(thd_curr->vcpu_ctx.vmcs.fb_mask)) vmx_fallback_load_host(&thd_curr->vcpu_ctx.vmcs);
 
 	/* GS_BASE: swapped by the VMCS; KERNEL_GS_BASE and TSC_AUX: stay loaded, see vmx_resume(). */
 	

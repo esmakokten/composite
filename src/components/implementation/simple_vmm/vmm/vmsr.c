@@ -365,11 +365,8 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		u64_t val = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
 
 		vcpu->fmask_shadow = val;
-		if (val != COS_HOST_FMASK) {
-			printc("[vmm] FMASK write %llx differs from the host's %llx: no fallback yet\n",
-			       (unsigned long long)val, (unsigned long long)COS_HOST_FMASK);
-			VM_PANIC(vcpu);
-		}
+		/* Equal to the host's: nothing happens at exits. Different: this vCPU swaps it (the fallback). */
+		vcpu_msr_set(vcpu, VM_VCPU_MSR_FMASK, val, "FMASK");
 		goto done;
 	}
 	case MSR_IA32_LSTAR:
@@ -390,9 +387,9 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		}
 		vcpu->lstar_shadow = val;
 		if (VM_GUEST_PTI) {
-			printc("[vmm] LSTAR write %llx on a PTI guest: no trampoline, fallback not yet available\n",
-			       (unsigned long long)val);
-			VM_PANIC(vcpu);
+			/* No trampoline for a PTI guest (see above): it keeps its own LSTAR through the fallback. */
+			vcpu_msr_set(vcpu, VM_VCPU_MSR_LSTAR, val, "LSTAR");
+			goto done;
 		}
 		if (!vcpu->tramp_installed) {
 			guest_tramp_install(vcpu, val);
@@ -414,11 +411,7 @@ wrmsr_handler(struct vmrt_vm_vcpu *vcpu)
 		u64_t val = (regs->ax & 0xFFFFFFFF) | ((regs->dx & 0xFFFFFFFF) << 32);
 
 		vcpu->star_shadow = val;
-		if (val != COS_HOST_STAR) {
-			printc("[vmm] STAR write %llx differs from the host's %llx: no fallback yet\n",
-			       (unsigned long long)val, (unsigned long long)COS_HOST_STAR);
-			VM_PANIC(vcpu);
-		}
+		vcpu_msr_set(vcpu, VM_VCPU_MSR_STAR, val, "STAR");
 		goto done;
 	}
 	case MSR_IA32_EFER:
