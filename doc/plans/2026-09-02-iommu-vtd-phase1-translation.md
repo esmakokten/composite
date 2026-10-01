@@ -35,7 +35,8 @@ New, and load-bearing for every task here:
 
 ```bash
 cd /home/esma/workspace/composite_main
-./cos build
+# Translation and the self-test are opt-in (cos_config.h); a plain ./cos build is discovery-only.
+COS_KERNEL_EXTRA_CFLAGS='-DCOS_IOMMU_TRANSLATE=1 -DCOS_IOMMU_SELFTEST=1' ./cos build
 ./cos compose composition_scripts/unit_heap.toml baseline
 timeout 40 ./cos run baseline iommu 2>&1 | tee /tmp/boot.log   # q35 + intel-iommu
 timeout 35 ./cos run baseline          2>&1 | tee /tmp/boot-pc.log  # no IOMMU, must stay clean

@@ -617,6 +617,21 @@ dmar_init(void)
 		return;
 	}
 
+	for (i = 0; i < rmrr_cnt; i++) {
+		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
+		       (unsigned long)rmrrs[i].limit, rmrrs[i].segment);
+	}
+
+	/*
+	 * Everything above is read-only discovery.  Everything below
+	 * programs the hardware, and is opt-in: see COS_IOMMU_TRANSLATE in
+	 * cos_config.h for why the default is off.
+	 */
+	if (!COS_IOMMU_TRANSLATE) {
+		printk("DMAR: translation not enabled (COS_IOMMU_TRANSLATE=0); discovery only\n");
+		return;
+	}
+
 	for (i = 0; i < unit_cnt; i++) {
 		if (dmar_qi_init(&units[i])) continue;
 		if (dmar_inv_context_global(&units[i]) || dmar_inv_iotlb_global(&units[i])) {
@@ -628,11 +643,7 @@ dmar_init(void)
 		units[i].root = &root_pages[i][0];
 		dmar_translation_enable(&units[i]);
 		dmar_fault_poll(&units[i]);
-		if (i == 0) dmar_selftest(&units[i]);
-	}
-	for (i = 0; i < rmrr_cnt; i++) {
-		printk("DMAR: rmrr [0x%lx, 0x%lx] segment %u\n", (unsigned long)rmrrs[i].base,
-		       (unsigned long)rmrrs[i].limit, rmrrs[i].segment);
+		if (COS_IOMMU_SELFTEST && i == 0) dmar_selftest(&units[i]);
 	}
 }
 

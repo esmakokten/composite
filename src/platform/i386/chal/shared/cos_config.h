@@ -91,6 +91,37 @@
 /* Optional CPU features */
 // #define MPK_ENABLED
 
+/*
+ * VT-d DMA remapping (x86_64 only; see platform/x86_64/dmar.c).
+ *
+ * Discovery -- parsing the DMAR table and reading each unit's capability
+ * registers -- always runs and is read-only.  Everything that programs
+ * the hardware is behind these two knobs, default off, because enabling
+ * translation changes which devices can reach memory: a device on a bus
+ * without a context table is cut off, and that has only been exercised
+ * under QEMU where every device sits on bus 0.
+ *
+ *   COS_IOMMU_TRANSLATE  1: enable queued invalidation and translation
+ *                           at boot, every device in pass-through.
+ *   COS_IOMMU_SELFTEST   1: additionally run the four-phase containment
+ *                           self-test against a QEMU "edu" device and
+ *                           leave it bound to a test domain.  Implies
+ *                           COS_IOMMU_TRANSLATE.
+ *
+ * The QEMU regression run is:
+ *   COS_KERNEL_EXTRA_CFLAGS='-DCOS_IOMMU_TRANSLATE=1 -DCOS_IOMMU_SELFTEST=1' ./cos build
+ */
+#ifndef COS_IOMMU_TRANSLATE
+#define COS_IOMMU_TRANSLATE 0
+#endif
+#ifndef COS_IOMMU_SELFTEST
+#define COS_IOMMU_SELFTEST 0
+#endif
+#if COS_IOMMU_SELFTEST && !COS_IOMMU_TRANSLATE
+#undef COS_IOMMU_TRANSLATE
+#define COS_IOMMU_TRANSLATE 1
+#endif
+
 #define FPU_ENABLED 1
 #define FPU_SUPPORT_SSE 1
 #define FPU_SUPPORT_FXSR 1 /* >0 : CPU supports FXSR. */

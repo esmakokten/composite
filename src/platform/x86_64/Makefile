@@ -31,6 +31,8 @@ WARNINGS += -Wwrite-strings
 WARNINGS += -Wno-address-of-packed-member
 
 CFLAGS += $(WARNINGS)
+# Build-time overrides for cos_config.h knobs, e.g. -DCOS_IOMMU_SELFTEST=1.
+CFLAGS += $(COS_KERNEL_EXTRA_CFLAGS)
 
 KERNEL_CFILES += kernel.c
 KERNEL_CFILES += gdt.c
