@@ -212,7 +212,7 @@ static u8_t dmar_unit_aw(struct dmar_unit *u);
  * levels, aw 2 is 48-bit and four.  Nine index bits per level.
  */
 static paddr_t
-dmar_build_mapping(struct dmar_unit *u, paddr_t target, u64_t iova)
+dmar_build_mapping(struct dmar_unit *u, paddr_t target, u64_t iova, u64_t intern_flags, u64_t leaf_flags)
 {
 	unsigned levels = dmar_unit_aw(u) + 2;
 	unsigned i;
@@ -223,16 +223,19 @@ dmar_build_mapping(struct dmar_unit *u, paddr_t target, u64_t iova)
 	/*
 	 * Walk down from the root, linking each level to the next.  Every
 	 * intermediate entry must grant at least what the leaf does:
-	 * permissions are ANDed along the walk.
+	 * permissions are ANDed along the walk.  The flag sets are
+	 * parameters so the same walk can be built in VT-d format or in
+	 * EPT format -- the latter is how the "can one table serve both"
+	 * question gets an empirical answer.
 	 */
 	for (i = 0; i + 1 < levels; i++) {
 		unsigned shift = 12 + 9 * (levels - 1 - i);
 		unsigned idx   = (unsigned)((iova >> shift) & 0x1ff);
 
-		((u64_t *)dom_tbl[i])[idx] = (u64_t)chal_va2pa(dom_tbl[i + 1]) | x86_VTD_SL_INTERN_DEF;
+		((u64_t *)dom_tbl[i])[idx] = (u64_t)chal_va2pa(dom_tbl[i + 1]) | intern_flags;
 	}
 	((u64_t *)dom_tbl[levels - 1])[(unsigned)((iova >> 12) & 0x1ff)] =
-	  ((u64_t)target & ~0xfffULL) | x86_VTD_SL_VM_DEF;
+	  ((u64_t)target & ~0xfffULL) | leaf_flags;
 
 	for (i = 0; i < levels; i++) dmar_flush_cache(u, dom_tbl[i], PAGE_SIZE);
 
@@ -933,7 +936,7 @@ dmar_selftest(struct dmar_unit *u)
 	 */
 	{
 		u64_t   iova = 0;
-		paddr_t root = dmar_build_mapping(u, target_pa, iova);
+		paddr_t root = dmar_build_mapping(u, target_pa, iova, x86_VTD_SL_INTERN_DEF, x86_VTD_SL_VM_DEF);
 
 		if (dmar_domain_bind(u, bdf, root, 2)) return;
 
@@ -945,6 +948,31 @@ dmar_selftest(struct dmar_unit *u)
 		wrote = edu_dma_try(bar0, (paddr_t)(iova + PAGE_SIZE));
 		printk("DMAR: self-test unmapped neighbour: memory %s\n",
 		       wrote ? "WRITTEN (CONTAINMENT FAILED)" : "untouched (expected)");
+		dmar_fault_poll(u);
+	}
+
+	/*
+	 * Fifth phase: the same mapping, but with the entry bits Composite
+	 * actually writes into EPT tables -- including the WB memory type
+	 * in bits 5:3, ignore-PAT in bit 6 and user-execute in bit 10,
+	 * none of which mean the same thing to VT-d.  If the DMA lands,
+	 * this unit accepts an EPT-formatted table as a second-level table
+	 * and a VM's EPT could serve as its device table directly.  If it
+	 * faults, the reason code says whether a reserved bit was the
+	 * cause.  Note the walk depth still comes from this unit's SAGAW;
+	 * Composite's EPT is always four levels, so depth is a separate
+	 * compatibility condition from entry format.
+	 */
+	{
+		u64_t   iova = 0;
+		paddr_t root = dmar_build_mapping(u, target_pa, iova, x86_EPT_INTERN_DEF, x86_EPT_VM_DEF);
+
+		if (dmar_domain_bind(u, bdf, root, 3)) return;
+
+		wrote = edu_dma_try(bar0, (paddr_t)iova);
+		printk("DMAR: self-test EPT-formatted table (intern 0x%lx leaf 0x%lx): memory %s\n",
+		       (unsigned long)x86_EPT_INTERN_DEF, (unsigned long)x86_EPT_VM_DEF,
+		       wrote ? "WRITTEN -- unit accepts EPT entry format" : "untouched -- see fault reason");
 		dmar_fault_poll(u);
 	}
 }

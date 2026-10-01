@@ -131,8 +131,9 @@ existing page table so that synchronisation is free by construction — is plaus
 the VM case, because EPT and VT-d second-level formats are deliberately similar. It is not plausible for a regular component page table, whose low bits mean
 present/writable/user rather than read/write/execute. A driver component's table must
 therefore be mirrored. Whether a *VM's* EPT can be shared outright is a Phase 1
-question, not a Phase 2 one, because a favourable answer deletes U5 — see
-**Open question: one table instead of two** below.
+question, not a Phase 2 one, because a favourable answer deletes U5 — and it has been
+answered favourably; see **Resolved: a VM's EPT can serve directly as its device table**
+below.
 
 ### D4. Invalidation is lazy, paid at retype
 
@@ -293,20 +294,59 @@ IOMMU exists) and enables translation during `dmar_init()`. That was a reasonabl
 to find out whether the hardware programming was right, and it is now gated off by
 default; it is not the shape the finished mechanism takes. Replacing it is K12.
 
-## Open question: one table instead of two
+## Resolved: a VM's EPT can serve directly as its device table
 
-D1 assumes two tables kept coherent. If a context entry could point directly at a VM's
-existing EPT root, coherence would be free by construction, the manager would have
-nothing to maintain, and D2's user-level obligation would disappear entirely.
+*Was "Open question: one table instead of two". Settled 2026-09-30 by specification and
+by experiment; the conditions under which it holds are listed, because they are unit
+properties rather than universals.*
 
-The evidence so far is encouraging but incomplete. EPT places read, write and execute
-at bits 0, 1 and 2; the phase-three self-test confirmed VT-d second-level entries do the
-same. The divergence is EPT's bits 5:3 memory type and bit 6 ignore-PAT against VT-d's
-extended-memory-type field and snoop bit.
+**Claim.** In legacy translation-table mode, which is what this implementation uses, a
+VT-d unit accepts Composite's EPT page tables as second-stage tables unmodified. For a
+VM component the IOMMU table and the EPT are therefore **one physical structure**, and
+D2's coherence obligation (U5) does not arise for VMs.
 
-This must be settled against the VT-d specification before the manager-side coherence
-tracking is built, because settling it favourably deletes that work rather than
-informing it.
+**From the specification** (Intel VT-d Architecture Specification Rev. 4.0, second-stage
+paging-structure entries). The reserved fields in a second-stage entry with R or W set
+are: `PS` in non-leaf entries, `SNP` (bit 11) in non-leaf entries, `SNP` in leaf entries
+when `ECAP.SC` is 0, and address bits above the host address width. `X` (bit 2) is
+ignored for requests without PASID. `EMT` (bits 5:3) and `IPAT` (bit 6) are ignored when
+`TTM = 00b`. Bits 8 and 9 are the accessed and dirty flags when that feature is enabled,
+with the same meaning as in EPT. Composite's EPT entries (`x86_EPT_INTERN_DEF = 0x407`,
+`x86_EPT_VM_DEF = 0x477`: R, W, X, user-execute, WB memory type, ignore-PAT) set none of
+the reserved fields; every bit they do set is either shared in meaning (R, W, A, D) or
+ignored in this mode (X, EMT, IPAT, bit 10).
+
+**From experiment** (branch `IOMMU`, self-test phase five). A table built with the EPT
+flag constants, bound to a device, translates a DMA correctly under QEMU's VT-d at both
+three levels (`aw-bits=39`) and four (`aw-bits=48`). QEMU's model rejects reserved bits
+with a distinct fault reason; none was raised.
+
+**Conditions**, all decidable from the capability registers already decoded at boot:
+
+1. **Depth.** Composite's EPT is four-level, so the unit must report `SAGAW` bit 2. The
+   R740 does (`0x4`). QEMU's default unit does not (`0x2`); it must be given `aw-bits=48`.
+2. **Coherency.** On a unit with `ECAP.C = 0` the hardware does not snoop CPU writes to
+   the table, so every EPT write by the CPU-side mapping code would need a cache flush
+   before a device could see it. The R740 reports `ECAP.C = 1`, so there the EPT mapping
+   path is unchanged. On QEMU, sharing would require flushes in the EPT path — the
+   mirrored approach remains the right one for non-coherent units.
+3. **Large pages.** If the EPT ever maps 2 MB or 1 GB pages, the unit must report them in
+   `CAP.SLLPS`. Composite's EPT currently maps at page order only; **unverified** that
+   nothing larger is ever written.
+4. **Invalidation is unchanged.** Sharing removes the second table, not the second TLB. An
+   EPT unmap still requires an IOTLB invalidation before the frame is reclaimed; D4 stands.
+5. **The reference is unchanged.** D5's reference on bind applies to the shared table.
+
+**Consequences for the design.**
+
+- **U5 is needed only for driver components**, whose regular page tables use a format
+  VT-d cannot walk (present/writable/user in the low bits). For VMs there is nothing to
+  keep coherent.
+- **D7 is needed only for driver components.** A VM component already holds the one page
+  table that serves both roles; the bind operation points the context entry at its EPT
+  root. No second capability, no four-byte question, for the VM case.
+- The context entry's address width field is set from `SAGAW`, and the bind operation
+  must refuse when the unit does not support the table's depth.
 
 ## Consequences to accept
 
@@ -364,8 +404,8 @@ regions.
   the page's retype state and taking a reference on it; `dmar_init()` shrinks to
   discovery. Removes the static BSS arrays and the four-bus limit.
 - **K11 — Component pairing.** `comp_activate` accepts and records the IOMMU
-  page-table root alongside the existing one, per D7 — *if* the open question above
-  leaves the kernel needing it at all.
+  page-table root alongside the existing one, per D7 — driver components only, since a
+  VM's EPT serves both roles.
 - **K8 — Invalidation queue.** One page per unit, supplied by the manager per D8;
   IOTLB-invalidate and invalidation-wait descriptor submission, and the flush timestamp
   of D4.
@@ -398,8 +438,8 @@ regions.
   table: on every map and unmap it performs for a component that has a domain, it makes
   the paired change to that component's IOMMU table. Because the kernel refuses to
   reclaim a frame that is still mapped anywhere (D2), a lapse here is a correctness bug
-  in the manager's own service, not a breach of kernel memory safety. Unnecessary if
-  the open question above resolves in favour of one table.
+  in the manager's own service, not a breach of kernel memory safety. **Driver
+  components only**: a VM's EPT is its device table (see the resolved question above).
 
 ## Validation
 
