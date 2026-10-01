@@ -138,45 +138,66 @@ question, not a Phase 2 one, because a favourable answer deletes U5 — see
 
 Composite does not do synchronous TLB shootdown. Unmap records a timestamp
 (`retype_entry.last_unmap`); retype calls `tlb_quiescence_check(last_unmap)`
-(`retype_tbl.c:329`) and throws `-EQUIESCENCE` for userspace to retry if no flush has
+(`retype_tbl.c:329`) and throws `-EQUIESCENCE` for user level to retry if no flush has
 covered that timestamp on every core. Cost sits on the retype slow path and unmap
 stays free.
 
-The IOTLB analogue is structurally identical with one asymmetry that decides the
-design: the CPU TLB is flushed for free by the periodic timer
-(`chal_pgtbl.c:161`, `last_periodic_flush`), and nothing flushes the IOTLB for free.
+We invalidate the IOTLB the same way: **lazily, at retype, on demand**. Unmap records a
+timestamp. When retype finds that timestamp newer than the last IOTLB flush, it submits
+a global IOTLB invalidate and a wait descriptor at that point, records the completion,
+and proceeds. Fast paths are untouched; the queued-invalidation round trip is paid only
+when a page is actually being reclaimed.
 
-We therefore invalidate **lazily, at retype, on demand**. Unmap continues to record
-only a timestamp. When retype finds `last_unmap` newer than the last IOTLB flush, it
-issues an invalidation and a wait descriptor at that point, updates the flush
-timestamp, and proceeds. Fast paths are untouched; the queued-invalidation round trip
-is paid only when a page is actually being reclaimed, which is already a slow path
-permitted to retry.
+**A correction to the earlier justification.** The first draft of this section argued
+from an asymmetry: "the CPU TLB is flushed for free by the periodic timer, the IOTLB is
+not." That premise is false on x86_64, and was inferred from the *checking* code rather
+than read from the *flushing* code. Verified 2026-09-25 and again 2026-09-30:
 
-Alternatives rejected: a timer-driven periodic global invalidate is perfectly
-symmetric with the CPU-TLB story but adds an unconditional DMAR round trip whether or
-not anything was unmapped, and bounds worst-case retype latency by the flush period;
-synchronous invalidation at unmap puts a multi-microsecond round trip on the one path
-the current design deliberately keeps free. Note that neither is what Linux does —
-Linux batches through flush queues.
+- `chal_flush_tlb()`, `chal_flush_tlb_global()` and `chal_remote_tlb_flush()` are empty
+  bodies (`platform/i386/chal/chal_plat.h`, shared with x86_64 by symlink).
+- `last_periodic_flush` is never written anywhere on x86_64; `last_mandatory_flush` is
+  written only by `tlb_mandatory_flush()` (`capinv.c:30`), which has no callers.
+- `chal_tlb_quiescence_check()` (`chal_pgtbl.c:155`) therefore always reports *not
+  quiescent*, and **`retype2untyped` always fails with `-EQUIESCENCE` on x86_64**.
+  Frame recycling is non-functional today; the failure is at least in the safe direction.
 
-**Phase 1 granularity, stated precisely.** `retype_tbl` is keyed on physical frames
-and has no knowledge of domains, so mapping a frame back to the domains that reach it
-is not cheap. Phase 1 therefore keeps one global timestamp pair rather than per-domain
-state:
+The decision survives this; the reason for it changes. Lazy-at-retype is right because
+retype is the only point at which stale device translations become dangerous — a page
+that is unmapped but not yet reclaimed is reachable by a device but owned by nobody
+else — and because a DMAR round trip on every unmap would put a multi-microsecond cost
+on a path the existing design keeps free. Those arguments do not depend on what the CPU
+side does.
 
-- `iommu_last_unmap` is written on unmap **only when the page table being modified has
-  an attached domain** — the back-pointer from K7 makes this a cheap test. Unmapping a
-  page no device can reach leaves it untouched, so components with no assigned device
-  pay nothing.
+Two consequences follow:
+
+- **K9 cannot be exercised until CPU-TLB quiescence is real.** The IOTLB check is reached
+  only after the CPU check passes, and the CPU check never passes. Implementing K9 is
+  mechanical; *testing* it is blocked on a Composite-wide defect recorded in the vault's
+  Known Bugs note ("TLB invalidation does not exist on x86"). That defect is not IOMMU
+  work and should not be fixed as a side effect of it.
+- **Revocation is a separate, open problem on both sides.** Quiescence gates *recycling*,
+  not *revocation*: unmapping a page from an IOMMU table today revokes nothing until a
+  global invalidate happens for another reason. The CPU side has the identical hole.
+  Page-selective invalidation on unmap is the fix, and it is deliberately out of scope
+  for Phase 1 because it is the same question as the CPU-side one and should get the
+  same answer.
+
+**Phase 1 granularity, stated precisely.** `retype_tbl` is keyed on physical frames and
+has no knowledge of domains, so mapping a frame back to the domains that reach it is not
+cheap. Phase 1 keeps one global timestamp pair:
+
+- `iommu_last_unmap` is written on unmap **only when the page table being modified is of
+  type `PGTBL_TYPE_IOMMU`** — the type field on `struct cap_pgtbl` makes this a one-word
+  test, and it needs no back-pointer. Unmapping from an ordinary or EPT table leaves it
+  untouched, so components with no device pay nothing.
 - `iommu_last_flush` records the completion of the last global IOTLB invalidate.
 - Retype, after its existing `tlb_quiescence_check`, tests `iommu_last_unmap >
   iommu_last_flush`. If so it submits a global IOTLB invalidate and a wait descriptor,
   sets `iommu_last_flush` on completion, and proceeds.
 
-This is coarse — one device-reachable unmap anywhere forces a global invalidate at the
-next retype — but it is correct, and retype is a slow path already permitted to retry.
-Per-domain granularity is a later refinement, not a correctness requirement.
+Coarse — one device-reachable unmap anywhere forces a global invalidate at the next
+retype — but correct, and retype is a slow path already permitted to retry. Per-domain
+granularity is a later refinement, not a correctness requirement.
 
 ### D5. Binding a device takes a reference on the IOMMU page table
 
@@ -243,6 +264,35 @@ manager knows which two tables belong together, the manager can track it and the
 is unnecessary. The one argument for kernel-side storage is teardown, and D5 handles
 teardown better.
 
+### D8. Remapping structures come from retyped pages, not from the kernel image
+
+The kernel has no memory allocator and the design must never assume one. Every page the
+IOMMU hardware walks — root tables, context tables, invalidation queues, and the
+second-level page tables of D3 — is memory that user level retyped to kernel memory and
+handed to the kernel through a capability operation, exactly as a page table or a
+capability table is created today (`cos_pgtbl_alloc` → `CAPTBL_OP_PGTBLACTIVATE` with a
+kernel-memory address the manager retyped first).
+
+Consequences:
+
+- **Translation is not enabled at boot.** `dmar_init()` discovers the hardware and reads
+  its capabilities, which needs no memory. Enabling a unit is a capability operation the
+  manager invokes once it has retyped the pages the unit needs: one page for the root
+  table, one for the invalidation queue. Context tables are supplied the same way, per
+  bus, when the first device on that bus is bound.
+- **The kernel validates what it is given.** The page must be in the `RETYPETBL_KERN`
+  state and page-aligned; the operation takes a reference on it so it cannot be retyped
+  away while the hardware walks it.
+- **Policy follows.** Which buses get context tables, and therefore which devices can be
+  bound at all, becomes the manager's decision, made with memory it chose to spend. The
+  present fixed limit of four context tables per unit disappears with the static arrays.
+
+The implementation on branch `IOMMU` at `47b031c0` violates this decision: it carves
+every remapping structure out of static kernel BSS (216 KB, reserved whether or not an
+IOMMU exists) and enables translation during `dmar_init()`. That was a reasonable way
+to find out whether the hardware programming was right, and it is now gated off by
+default; it is not the shape the finished mechanism takes. Replacing it is K12.
+
 ## Open question: one table instead of two
 
 D1 assumes two tables kept coherent. If a context entry could point directly at a VM's
@@ -297,8 +347,9 @@ regions.
   flag-translation layer beside the EPT one in `chal_pgtbl.h`, and wiring into the
   type switches in `chal_pgtbl.c` (approximately lines 248, 730, 772) and the page
   table activate path.
-- **K5 — Root and context tables.** Kernel-allocated. A context entry carries a domain
-  identifier, the second-level table pointer, and an address width.
+- **K5 — Root and context tables.** Built in pages supplied by the manager per D8. A
+  context entry carries a domain identifier, the second-level table pointer, and an
+  address width.
 - **K6 — Bind operation.** `CAPTBL_OP_IOMMU_BIND(bdf, pgtbl_cap)`: validate the page
   table is IOMMU-typed, refuse a device covered by an RMRR, allocate a domain
   identifier from the kernel table (D6), **take a reference on the page-table
@@ -308,13 +359,19 @@ regions.
   component's page table and its IOMMU table is policy, not safety, and belongs in the
   memory manager — see D2 and U5. The identifier is retained rather than renumbered so
   that the plan documents referring to K5–K10 continue to resolve.
+- **K12 — Unit enable as a capability operation (D8).** `CAPTBL_OP_IOMMU_UNIT_INIT(unit,
+  root_page, iq_page)` and `CAPTBL_OP_IOMMU_CTXT_ADD(unit, bus, page)`, each validating
+  the page's retype state and taking a reference on it; `dmar_init()` shrinks to
+  discovery. Removes the static BSS arrays and the four-bus limit.
 - **K11 — Component pairing.** `comp_activate` accepts and records the IOMMU
   page-table root alongside the existing one, per D7 — *if* the open question above
   leaves the kernel needing it at all.
-- **K8 — Invalidation queue.** Queue allocation, IOTLB-invalidate and
-  invalidation-wait descriptor submission, and the flush timestamp of D4.
+- **K8 — Invalidation queue.** One page per unit, supplied by the manager per D8;
+  IOTLB-invalidate and invalidation-wait descriptor submission, and the flush timestamp
+  of D4.
 - **K9 — Quiescence extension.** Retype path issues invalidation on demand per D4, at
-  the global granularity described there.
+  the global granularity described there. **Blocked for testing**, not for
+  implementation: `retype2untyped` cannot currently succeed on x86_64 (see D4).
 - **K10 — Fault recording.** Polled for Phase 1. Fault-reporting by interrupt requires
   Phase 2's MSI work, because external interrupts are today capped at legacy lines
   32–63 (`hw.h:17-18`).
@@ -373,6 +430,8 @@ and, being two-socket, exercises multi-DRHD routing that QEMU will not.
 | Manager's coherence tracking races its own map/unmap | The component's device sees a stale view | Manager makes the paired IOMMU-table change under the same lock it already holds for the mapping; a lapse is confined to that component (D2) |
 | Domain identifier collision across two page tables | Isolation failure — one device hits another's cached translation | Identifiers allocated in the kernel (D6), uniqueness by construction |
 | Context entry outlives the page table it names | Device DMAs into reclaimed memory | Binding holds a reference on the page-table capability (D5) |
+| Manager hands the kernel a page the hardware will walk that is not kernel memory | Device or hardware writes into user-owned memory | Unit-init and context-add operations check `RETYPETBL_KERN` and take a reference (D8) |
+| K9 looks correct but has never run | A latent bug ships in the one path that protects recycling | K9 is marked untestable until CPU-TLB quiescence works; do not claim it verified (D4) |
 
 ## Measured hardware facts
 
