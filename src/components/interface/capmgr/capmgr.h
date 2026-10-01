@@ -88,4 +88,7 @@ capid_t COS_STUB_DECL(capmgr_vm_vmcb_create)(vm_vmcscap_t vmcs_cap, vm_msrbitmap
 thdcap_t capmgr_vm_vcpu_create(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid);
 thdcap_t COS_STUB_DECL(capmgr_vm_vcpu_create)(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid);
 
+int capmgr_vm_vcpu_msr_set(thdid_t vcpu_tid, u32_t sel, u64_t val);
+int COS_STUB_DECL(capmgr_vm_vcpu_msr_set)(thdid_t vcpu_tid, u32_t sel, u64_t val);
+
 #endif /* CAPMGR_H */

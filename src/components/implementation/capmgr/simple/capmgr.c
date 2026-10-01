@@ -1059,6 +1059,25 @@ capmgr_vm_vcpu_create(compid_t vm_comp, vm_vmcb_t vmcb_cap, thdid_t *tid)
 	return capmgr_thd_create_ext(vm_comp, vmcb_cap, tid);
 }
 
+/*
+ * A VMM hands the kernel one of its vCPUs' register values
+ * (CAPTBL_OP_VM_VCPU_MSR_SET). The operation is invoked on a capability
+ * table that holds the vCPU's thread capability, and a VMM has no capability
+ * to a table, so it comes through here. Only the VM's own VMM may set it; the
+ * kernel validates the value.
+ */
+int
+capmgr_vm_vcpu_msr_set(thdid_t vcpu_tid, u32_t sel, u64_t val)
+{
+	struct cos_compinfo *ci = cos_compinfo_get(cos_defcompinfo_curr_get());
+	struct cm_thd       *t  = capmgr_get_thd(vcpu_tid);
+
+	if (!t || !(t->client->comp.flags & CRT_COMP_VM)) return -EINVAL;
+	if (t->client->comp.vm_comp_info.vmm_comp_id != (compid_t)cos_inv_token()) return -EINVAL;
+
+	return cos_vm_vcpu_msr_set(ci->captbl_cap, t->thd.cap, sel, val);
+}
+
 thdcap_t  capmgr_aep_create_thunk(struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax) { BUG(); return 0; }
 thdcap_t  capmgr_aep_create_ext(spdid_t child, struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax, arcvcap_t *extrcv) { BUG(); return 0; }
 asndcap_t capmgr_asnd_create(spdid_t child, thdid_t t) { BUG(); return 0; }
