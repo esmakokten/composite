@@ -49,6 +49,44 @@ INCBIN(vmlinux, VM_GUEST_IMAGE)
 /* The realmode stub is built here and is not selectable. */
 INCBIN(bios, "guest/guest.img")
 
+/*
+ * Optional text appended to the guest's kernel command line, from the
+ * composition script the same way as the image:
+ *
+ *     constants = [..., {variable = "VM_GUEST_CMDLINE",
+ *                        value = "\"pti=off eb.rungs=L0,L3 eb.n=200000\""}]
+ *
+ * The image's booter (cos-vmimg vmxbooter/kmain.c) looks for a page at
+ * GUEST_CMDLINE_GPA, inside the region it reports to the guest as reserved,
+ * carrying GUEST_CMDLINE_MAGIC and a NUL-terminated string, and appends the
+ * string to its compiled-in line. This is what lets one frozen guest image
+ * be booted with different parameters, and with and without page-table
+ * isolation, without changing a byte of it. An image whose booter predates
+ * the block ignores the page.
+ */
+#ifndef VM_GUEST_CMDLINE
+#define VM_GUEST_CMDLINE ""
+#endif
+#define GUEST_CMDLINE_GPA   0x9F000
+#define GUEST_CMDLINE_MAGIC "COSCMDL0"
+#define GUEST_CMDLINE_MAX   (PAGE_SIZE_4K - 8 - 1)
+
+static void
+guest_cmdline_install(struct vmrt_vm_comp *vm)
+{
+	static char block[PAGE_SIZE_4K];
+	const char *append = VM_GUEST_CMDLINE;
+	size_t len = strlen(append);
+
+	if (len == 0) return;
+	assert(len <= GUEST_CMDLINE_MAX);
+
+	memcpy(block, GUEST_CMDLINE_MAGIC, 8);
+	memcpy(block + 8, append, len + 1);
+	vmrt_vm_data_copy_to(vm, block, sizeof(block), GUEST_CMDLINE_GPA);
+	printc("Guest command line append: \"%s\"\n", append);
+}
+
 /* Only one VM component globally managed by this VMM */
 static struct vmrt_vm_comp *g_vm;
 static u8_t g_num_vcpus = 1;  
@@ -165,6 +203,8 @@ vm_comp_create(void)
 	printc("Guest Linux image start: %p, end: %p, size: %lu(%luMB)\n", start, end, sz, sz/1024/1024);
 	#define GUEST_IMAGE_ADDR 0x100000
 	vmrt_vm_data_copy_to(vm, start, sz, GUEST_IMAGE_ADDR);
+
+	guest_cmdline_install(vm);
 
 	ioapic_init(vm);
 
