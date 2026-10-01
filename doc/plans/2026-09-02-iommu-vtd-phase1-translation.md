@@ -1,5 +1,10 @@
 # IOMMU (VT-d) Phase 1, Translation — Implementation Plan
 
+> **Status (2026-09-30):** executed in full; see the commit log on branch `IOMMU`. Design
+> decisions have moved on since this was written — K7 is no longer kernel work, and a
+> VM's EPT now doubles as its device table. The spec is authoritative:
+> `doc/specs/2026-09-01-iommu-vtd-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Turn the IOMMU on — root and context tables, queued invalidation, translation enabled — and make a device's DMA actually go through it, with faults visible.

@@ -1,5 +1,10 @@
 # IOMMU (VT-d) Phase 1 Foundation — Implementation Plan
 
+> **Status (2026-09-30):** executed in full; see the commit log on branch `IOMMU`. Design
+> decisions have moved on since this was written — K7 is no longer kernel work, and a
+> VM's EPT now doubles as its device table. The spec is authoritative:
+> `doc/specs/2026-09-01-iommu-vtd-design.md`.
+
 > **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
 
 **Goal:** Make the Composite kernel discover the VT-d hardware, decode its capabilities, and allocate IOMMU-typed page tables — the foundation every later Phase 1 task builds on.

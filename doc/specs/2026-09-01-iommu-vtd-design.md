@@ -36,10 +36,12 @@ Phase 1 is a complete deliverable on its own. Phase 2 depends on it.
 
 ### D1. A domain mirrors a component's address space
 
-An **IOMMU domain** is a page table whose contents mirror one component's address
-space. A driver component's device sees the component's *virtual* addresses; a VM
-component's device sees *guest-physical* addresses, which is what that component's EPT
-already contains.
+An **IOMMU domain** is a page table describing one component's address space. A driver
+component's device sees the component's *virtual* addresses, through a second table
+kept in step with the component's own; a VM component's device sees *guest-physical*
+addresses **through the VM's EPT itself** — the two formats are compatible, so for a VM
+there is one table, not two (see *Resolved: a VM's EPT can serve directly as its device
+table*).
 
 The invariant is one sentence: **a device can reach exactly what its component can
 reach, and no more.**
@@ -83,8 +85,8 @@ The kernel owns:
 The memory and capability manager owns:
 
 - which component gets a domain, and which device is bound to it,
-- **keeping a component's IOMMU page table coherent with its own page table** — for a
-  VM, keeping the IOMMU table coherent with the EPT,
+- **keeping a driver component's IOMMU page table coherent with its own page table.**
+  A VM has no such obligation: its EPT is its device table,
 - fault consumption.
 
 **Why coherence is not kernel work.** Because safety does not need it. Mapping a frame
@@ -467,7 +469,8 @@ and, being two-socket, exercises multi-DRHD routing that QEMU will not.
 | IOMMU not page-walk coherent | Every table write needs a cache flush | Read the coherency capability in K3; branch the write path |
 | Multi-DRHD routing | Invalidation sent to the wrong unit is silently wrong | Bind each device to the unit its DMAR scope names; test on the two-socket target, not only QEMU |
 | Vendored DPDK lacks working `--iova-mode=va` | U3 stalls | Check the vendored version early; identity mapping is the fallback |
-| Manager's coherence tracking races its own map/unmap | The component's device sees a stale view | Manager makes the paired IOMMU-table change under the same lock it already holds for the mapping; a lapse is confined to that component (D2) |
+| Manager's coherence tracking (driver components only) races its own map/unmap | The component's device sees a stale view | Manager makes the paired IOMMU-table change under the same lock it already holds for the mapping; a lapse is confined to that component (D2) |
+| A VM's EPT writes a large page or a bit VT-d reserves | The unit faults on every DMA through that entry | Bind refuses units without the needed SAGAW depth; the EPT flag sets are pinned by static assert; large pages are **unverified** absent (resolved question, condition 3) |
 | Domain identifier collision across two page tables | Isolation failure — one device hits another's cached translation | Identifiers allocated in the kernel (D6), uniqueness by construction |
 | Context entry outlives the page table it names | Device DMAs into reclaimed memory | Binding holds a reference on the page-table capability (D5) |
 | Manager hands the kernel a page the hardware will walk that is not kernel memory | Device or hardware writes into user-owned memory | Unit-init and context-add operations check `RETYPETBL_KERN` and take a reference (D8) |
