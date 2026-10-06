@@ -24,6 +24,7 @@
 #include <netshmem.h>
 #include <nic_netio_shmem.h>
 #include <devices/vpci/virtio_net_io.h>
+#include <tlskey.h>
 
 
 INCBIN(vmlinux, "guest/vmlinux.img")
@@ -35,6 +36,9 @@ static u8_t g_num_vcpus = 1;
 
 #define VM_MAX_COMPS (2)
 #define GUEST_MEM_SZ (310*1024*1024)
+/* The TLS key service's shared buffer: one 2 MB shared-page object, aliased into the VM (the
+ * alias address is its guest-physical address) and into the service. */
+#define TLSKEY_BUF_SZ (2*1024*1024)
 
 SS_STATIC_SLAB(vm_comp, struct vmrt_vm_comp, VM_MAX_COMPS);
 SS_STATIC_SLAB(vm_lapic, struct acrn_vlapic, VM_MAX_COMPS * VMRT_VM_MAX_VCPU);
@@ -177,6 +181,38 @@ cos_init(void)
 		} else {
 			printc("VMM: Installed pong_args at slot 0 (captbl[%d])\n",
 			       VM_IPC_SINV_CAP_BASE);
+		}
+	}
+
+	/*
+	 * TLS key service, slot 1: allocate the shared buffer, alias it into the VM, hand it to
+	 * the service, check the service's cipher natively, then install tlskey_op in the VM's
+	 * captbl at slot 1 (slot 0 stays pong_args).
+	 */
+	{
+		extern struct usr_inv_cap __cosrt_ucap_tlskey_op;
+		vaddr_t mem = 0, gpa = 0;
+		cbuf_t  id;
+		unsigned long npages;
+		word_t  r;
+		int     ret;
+
+		id = memmgr_shared_page_allocn_aligned(TLSKEY_BUF_SZ / PAGE_SIZE_4K, PAGE_SIZE_4K, &mem);
+		assert(id && mem);
+		memset((void *)mem, 0, TLSKEY_BUF_SZ);
+		npages = memmgr_shared_page_map_aligned_in_vm(id, PAGE_SIZE_4K, &gpa, g_vm->comp_id);
+		assert(npages == TLSKEY_BUF_SZ / PAGE_SIZE_4K && gpa);
+		r = tlskey_attach(id, gpa, TLSKEY_BUF_SZ, 0);
+		printc("VMM: tlskey buffer: shm %lu, %u KB, vmm vaddr %lx, guest-physical %lx, attach -> %ld\n",
+		       (unsigned long)id, TLSKEY_BUF_SZ / 1024, mem, gpa, (long)r);
+		r = tlskey_op(TLSKEY_OP_SELFTEST, 0, 0, 0);
+		printc("VMM: tlskey SELFTEST (native sinv) -> %ld (%s)\n", (long)r, r == 0 ? "passed" : "FAILED");
+		ret = capmgr_vm_sinv_install(g_vm->comp_id, __cosrt_ucap_tlskey_op.cap_no, TLSKEY_SLOT);
+		if (ret) {
+			printc("VMM: WARNING: failed to install tlskey_op (ret=%d)\n", ret);
+		} else {
+			printc("VMM: Installed tlskey_op at slot %d (captbl[%d])\n", TLSKEY_SLOT,
+			       VM_IPC_SINV_CAP_BASE + TLSKEY_SLOT);
 		}
 	}
 

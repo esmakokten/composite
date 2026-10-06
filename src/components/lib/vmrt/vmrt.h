@@ -110,6 +110,17 @@ chal_cpuid(u32_t *a, u32_t *b, u32_t *c, u32_t *d)
 
 void vmrt_dump_vcpu(struct vmrt_vm_vcpu *vcpu);
 
+/*
+ * Exit census: every VM exit the kernel reflects to the handler thread (every reason but
+ * external interrupts, which it services in-kernel) is counted by reason in
+ * vmrt_handle_reason. vmcall errands take the kernel's fast path and never reach here, so
+ * this is the "slow exits" side of the errands-per-slow-exit ratio; the errand count comes
+ * from the service's COUNTERS op.
+ */
+#define VMRT_CENSUS_REASONS 64
+extern u64_t vmrt_exit_census[VMRT_CENSUS_REASONS];
+void vmrt_exit_census_dump(unsigned int tag);
+
 #define VM_PANIC(vcpu) {	\
     vmrt_dump_vcpu(vcpu);	\
     assert(0);		\

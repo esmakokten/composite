@@ -406,9 +406,32 @@ hlt_handler(struct vmrt_vm_vcpu *vcpu)
 	VM_PANIC(vcpu);
 }
 
+u64_t vmrt_exit_census[VMRT_CENSUS_REASONS];
+static u64_t vmrt_exit_census_last[VMRT_CENSUS_REASONS];
+
+void
+vmrt_exit_census_dump(unsigned int tag)
+{
+	u64_t total = 0, delta = 0;
+	int r;
+
+	for (r = 0; r < VMRT_CENSUS_REASONS; r++) {
+		total += vmrt_exit_census[r];
+		delta += vmrt_exit_census[r] - vmrt_exit_census_last[r];
+	}
+	printc("CENSUS[%u] slow exits: total %llu, since last dump %llu; per reason (since last dump):", tag, total, delta);
+	for (r = 0; r < VMRT_CENSUS_REASONS; r++) {
+		u64_t d = vmrt_exit_census[r] - vmrt_exit_census_last[r];
+		if (d) printc(" r%d=%llu", r, d);
+		vmrt_exit_census_last[r] = vmrt_exit_census[r];
+	}
+	printc("\n");
+}
+
 static inline void
 vmrt_handle_reason(struct vmrt_vm_vcpu *vcpu, u64_t reason)
 {
+	vmrt_exit_census[reason < VMRT_CENSUS_REASONS ? reason : VMRT_CENSUS_REASONS - 1]++;
 	switch (reason)
 	{
 	case VM_EXIT_REASON_EXTERNAL_INTERRUPT:

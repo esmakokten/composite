@@ -5,6 +5,7 @@
 #include "devices/vrtc/vrtc.h"
 #include "devices/vps2/vps2.h"
 #include "devices/vpci/virtio_net_io.h"
+#include <tlskey.h>
 
 void 
 io_handler(struct vmrt_vm_vcpu *vcpu)
@@ -71,6 +72,11 @@ io_handler(struct vmrt_vm_vcpu *vcpu)
 
 	switch (port_id)
 	{
+	case TLSKEY_CENSUS_PORT:
+		/* The guest asks for the exit census (tag = the byte written); reads return 0. */
+		if (access_dir == IO_OUT) vmrt_exit_census_dump((u8_t)regs->ax);
+		else regs->ax = 0;
+		goto done;
 	case CMOS_CMD_PORT:
 	case CMOS_DATA_PORT:
 		vrtc_handler(port_id, access_dir, access_sz, vcpu);
