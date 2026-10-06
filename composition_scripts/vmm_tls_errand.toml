@@ -57,3 +57,5 @@ deps = [
 implements = []
 constructor = "booter"
 baseaddr = "0x2000000"
+# the tls-errand recipe of cos-vmimg (branch w5/tls-image), installed with INSTALL_NAMED=1
+constants = [{variable = "VM_GUEST_IMAGE", value = "\"guest/vmlinux-tls-errand-5.15.107.img\""}]

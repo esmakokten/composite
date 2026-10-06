@@ -1073,7 +1073,13 @@ capmgr_vm_sinv_install(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot)
 	vmm_ci = cos_compinfo_get(vmm->comp.comp_res);
 	vm_ci  = cos_compinfo_get(vm->comp.comp_res);
 
-	dst_slot = VM_IPC_SINV_CAP_BASE + slot;
+	/*
+	 * A sinv capability is 64 bytes, i.e. captbl_idsize(CAP_SINV) = 4 ids, so VM IPC slots are
+	 * strided by that: slot s lives at id 64 + 4s (the guest encodes (64 + 4s + 1) << 16).
+	 * With a stride of 1, every slot but 0 fell inside slot 0's cacheline and captbl_add
+	 * rejected it ("header validation failed").
+	 */
+	dst_slot = VM_IPC_SINV_CAP_BASE + slot * captbl_idsize(CAP_SINV);
 
 	printc("capmgr: installing sinv cap %d into VM comp %ld captbl slot %d\n",
 	       sinv_cap, vm_comp_id, dst_slot);

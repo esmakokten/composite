@@ -27,7 +27,11 @@
 #include <tlskey.h>
 
 
-INCBIN(vmlinux, "guest/vmlinux.img")
+/* The guest image is named per composition: constants = [{variable = "VM_GUEST_IMAGE", ...}]. */
+#ifndef VM_GUEST_IMAGE
+#define VM_GUEST_IMAGE "guest/vmlinux.img"
+#endif
+INCBIN(vmlinux, VM_GUEST_IMAGE)
 INCBIN(bios, "guest/guest.img")
 
 /* Only one VM component globally managed by this VMM */
@@ -211,8 +215,8 @@ cos_init(void)
 		if (ret) {
 			printc("VMM: WARNING: failed to install tlskey_op (ret=%d)\n", ret);
 		} else {
-			printc("VMM: Installed tlskey_op at slot %d (captbl[%d])\n", TLSKEY_SLOT,
-			       VM_IPC_SINV_CAP_BASE + TLSKEY_SLOT);
+			printc("VMM: Installed tlskey_op at slot %d (captbl[%lu])\n", TLSKEY_SLOT,
+			       VM_IPC_SINV_CAP_BASE + TLSKEY_SLOT * captbl_idsize(CAP_SINV));
 		}
 	}
 

@@ -299,3 +299,9 @@ cos_init(void)
 	assert(vt);
 	printc("tlskey: GCM self-test %s\n", op_selftest() == 0 ? "passed" : "FAILED");
 }
+
+/* A server component with no main must still say so; nothing to run after initialisation. */
+void
+parallel_main(coreid_t cid)
+{
+}
