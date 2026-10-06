@@ -2,14 +2,15 @@ recipe:      tls-errand
 description: TLS key errand: G1/G2 gates and the BearSSL record-size sweep
 kernel:      5.15.107 (unmodified upstream)
 busybox:     1.37.0
-programs:    g1_selftest.c g2_bw.c tlsbench_raw.c census.c ipc_perf.c
+programs:    g1_selftest.c g2_bw.c tlsbench_raw.c census.c ipc_perf.c tlsbench.c
 modules:     errandbuf.c
 init:        run_tls_errand.sh
 fragment:    none
-libs:        bearssl
+libs:        bearssl openssl nginx
+overlay:     tls-errand
 config:      sha256:fb7abfed774cbcce
-initramfs:   sha256:0527e9ee99cfe71e
-image:       sha256:f795e22261039b66
-image-bytes: 7397376
-overlay:     d584905-dirty
-built:       2026-10-06T12:54:40Z
+initramfs:   sha256:d91f3b5a1e4e27b9
+image:       sha256:2ed1853dfac78949
+image-bytes: 14393344
+overlay:     8b116c0-dirty
+built:       2026-10-06T13:17:19Z
