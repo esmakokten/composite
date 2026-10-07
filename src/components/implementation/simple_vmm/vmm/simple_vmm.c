@@ -163,6 +163,10 @@ vm_comp_create(void)
 
 /* Weak usage of nicmgr interface */
 void __attribute__((weak)) nic_netio_shmem_map(cbuf_t shm_id);
+/* Weak usage of the tlskey interface: only compositions with the service link its stubs. */
+word_t __attribute__((weak)) tlskey_attach(word_t shm_id, word_t gpa, word_t len, word_t unused);
+word_t __attribute__((weak)) tlskey_op(word_t op_key, word_t a, word_t b, word_t c);
+extern struct usr_inv_cap __attribute__((weak)) __cosrt_ucap_tlskey_op;
 
 void
 cos_init(void)
@@ -193,8 +197,7 @@ cos_init(void)
 	 * the service, check the service's cipher natively, then install tlskey_op in the VM's
 	 * captbl at slot 1 (slot 0 stays pong_args).
 	 */
-	{
-		extern struct usr_inv_cap __cosrt_ucap_tlskey_op;
+	if (tlskey_attach) {
 		vaddr_t mem = 0, gpa = 0;
 		cbuf_t  id;
 		unsigned long npages;
@@ -218,6 +221,8 @@ cos_init(void)
 			printc("VMM: Installed tlskey_op at slot %d (captbl[%lu])\n", TLSKEY_SLOT,
 			       VM_IPC_SINV_CAP_BASE + TLSKEY_SLOT * captbl_idsize(CAP_SINV));
 		}
+	} else {
+		printc("VMM: no tlskey service in this composition; slot %d stays empty\n", TLSKEY_SLOT);
 	}
 
 	if (nic_netio_shmem_map) {
