@@ -7,6 +7,29 @@
 #include "devices/vpci/virtio_net_io.h"
 #include <tlskey.h>
 
+/* Per-port count of I/O exits, for the census: which ports a guest workload actually hits. */
+static u32_t io_port_census[65536];
+
+void
+io_port_census_dump(void)
+{
+	int top[8] = {0}, i, k, n;
+
+	for (i = 0; i < 65536; i++) {
+		if (!io_port_census[i]) continue;
+		for (k = 0; k < 8; k++) {
+			if (io_port_census[i] > io_port_census[top[k]]) {
+				for (n = 7; n > k; n--) top[n] = top[n - 1];
+				top[k] = i;
+				break;
+			}
+		}
+	}
+	printc("CENSUS ports (since boot):");
+	for (k = 0; k < 8 && io_port_census[top[k]]; k++) printc(" 0x%x=%u", top[k], io_port_census[top[k]]);
+	printc("\n");
+}
+
 void 
 io_handler(struct vmrt_vm_vcpu *vcpu)
 {
@@ -16,6 +39,8 @@ io_handler(struct vmrt_vm_vcpu *vcpu)
 	u16_t port_id = (qualification >> 16) & 0XFFFF;
 	u8_t access_sz = qualification & 7;
 	u8_t access_dir = (qualification >> 3) & 1;
+
+	io_port_census[port_id]++;
 
 	assert(!((qualification >> 4) & 1));
 	assert(!((qualification >> 5) & 1));
@@ -74,7 +99,7 @@ io_handler(struct vmrt_vm_vcpu *vcpu)
 	{
 	case TLSKEY_CENSUS_PORT:
 		/* The guest asks for the exit census (tag = the byte written); reads return 0. */
-		if (access_dir == IO_OUT) vmrt_exit_census_dump((u8_t)regs->ax);
+		if (access_dir == IO_OUT) { vmrt_exit_census_dump((u8_t)regs->ax); io_port_census_dump(); }
 		else regs->ax = 0;
 		goto done;
 	case CMOS_CMD_PORT:
