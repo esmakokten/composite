@@ -357,6 +357,15 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 
 		sinv_call_ext(thd_curr, sinvc, regs, cos_info, need_switch);
 
+		/*
+		 * The server is entered through restore_from_vm -> sysretq, which loads RFLAGS from
+		 * r11. Nothing above sets r11, so without this line the guest's r11 becomes the
+		 * service's RFLAGS (TF, DF, IF=0 are all the guest's to choose). Use the value the
+		 * kernel gives every new user thread (call_convention.h: r->r11 = 0x3200).
+		 * Temporary fix, w5_tls_errand DECISIONS.md A6; the guest wrapper keeps its own load.
+		 */
+		regs->r11 = 0x3200;
+
 		if (unlikely(++cr3pol_errands % 100000 == 0)) {
 			printk("diag: cr3pol errands %lu switches %lu skips %lu host_cr3 %lx\n",
 			       cr3pol_errands, cr3pol_switches, cr3pol_skips,
