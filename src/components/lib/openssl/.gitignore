@@ -1,0 +1,6 @@
+/openssl-3.0.17/
+/openssl-3.0.17.tar.gz
+/configure.log
+/build.log
+/check/*.o
+/check/gcm_check
