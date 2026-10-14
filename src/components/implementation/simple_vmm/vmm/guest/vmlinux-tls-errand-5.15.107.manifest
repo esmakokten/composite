@@ -8,9 +8,9 @@ init:        run_tls_errand.sh
 fragment:    none
 libs:        bearssl openssl nginx errand-provider
 overlay:     tls-errand
-config:      sha256:fb7abfed774cbcce
-initramfs:   sha256:ee830fe84167d815
-image:       sha256:61dd696f95f9f1c8
-image-bytes: 14274560
-overlay:     w5/phase1-sweep-2-g6172d73-dirty
-built:       2026-10-07T07:27:39Z
+config:      sha256:844c37d63ca51e54
+initramfs:   sha256:f8124728633a2e0a
+image:       sha256:696dcf42190191ec
+image-bytes: 15937536
+overlay:     w5/phase2-nginx-1-g6fba416-dirty
+built:       2026-10-14T07:35:33Z

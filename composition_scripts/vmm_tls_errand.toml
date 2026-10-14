@@ -36,7 +36,7 @@ baseaddr = "0x3000000"
 
 [[components]]
 name = "tlskey"
-img  = "tlskey.bearssl"
+img  = "tlskey.openssl"
 deps = [{srv = "sched", interface = "init"}, {srv = "sched", interface = "sched"}, {srv = "capmgr", interface = "capmgr"}, {srv = "capmgr", interface = "memmgr"}]
 implements = [{interface = "tlskey"}]
 constructor = "booter"
