@@ -4,11 +4,12 @@
 # Not vendored (60 MB unpacked): the tarball is taken from the workspace's third_party/ or
 # fetched, checked against its sha256, extracted into openssl-$(OSSL_VER)/ and configured by
 # configure-cos.sh (the one place the configure line lives), then only libcrypto.a is built.
-# libopenssl.a is a thin archive over libcrypto.a's members (and cos_stubs.o, if one is ever
-# needed), as lib/dpdk does. check/run.sh runs the NIST GCM vectors natively against it (G1).
+# libopenssl.a is a thin archive over cos_openssl.o (the component's arena and init, see
+# cos_openssl.h) and libcrypto.a's members, as lib/dpdk does. check/run.sh runs the NIST GCM
+# vectors natively against libcrypto.a (G1).
 LIBRARY_OUTPUT = openssl
 OBJECT_OUTPUT =
-INCLUDE_PATHS = openssl-3.0.17/include
+INCLUDE_PATHS = . openssl-3.0.17/include
 INTERFACE_DEPENDENCIES =
 LIBRARY_DEPENDENCIES =
 
@@ -25,6 +26,9 @@ include Makefile.lib
 OBJS += $(OSSL_SRC)/libcrypto.a
 # Makefile.lib's rule expanded its prerequisites before the line above
 $(SHLIB_FILE): $(OSSL_SRC)/libcrypto.a
+# cos_openssl.c needs the generated headers (opensslv.h, configuration.h)
+cos_openssl.o: $(OSSL_SRC)/libcrypto.a
+CINC += -I. -I$(OSSL_SRC)/include
 
 $(OSSL_TARBALL):
 	@if [ -f $(OSSL_LOCAL) ]; then cp $(OSSL_LOCAL) $@; else curl -fsSL -o $@ $(OSSL_URL); fi
