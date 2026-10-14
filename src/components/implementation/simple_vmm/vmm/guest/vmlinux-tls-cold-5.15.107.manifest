@@ -1,0 +1,16 @@
+recipe:      tls-cold
+description: TLS key errand: the cold-footprint sweep (warm vs evicted, errand and in-guest)
+kernel:      5.15.107 (unmodified upstream)
+busybox:     1.37.0
+programs:    g1_selftest.c tlsbench_raw.c census.c ipc_perf.c
+modules:     errandbuf.c
+init:        run_tls_cold.sh
+fragment:    none
+libs:        openssl
+overlay:     none
+config:      sha256:0b1adbe904341b89
+initramfs:   sha256:f27f3e8e723ce0ee
+image:       sha256:2d2c59d1505f4ef9
+image-bytes: 8613888
+overlay:     w5/phase2-nginx-2-gd449949-dirty
+built:       2026-10-14T11:27:36Z
