@@ -24,6 +24,11 @@
  *      without AES-NI and PCLMUL and prints the capabilities it found.
  *   6. No file, socket, thread or dynamic loading: libcrypto is configured without them
  *      (lib/openssl/configure-cos.sh); its heap is a static arena (lib/openssl/cos_openssl.c).
+ *   7. (Phase 3) The server's ECDSA P-256 signing key exists only here. It is compiled in from
+ *      tlskey_sign_key.h (generated with the guest image, which carries only its certificate and
+ *      a placeholder; DECISIONS.md A14), built into an EVP_PKEY at cos_init and checked against
+ *      its own public point; SIGN signs a 32-byte digest the guest computed over public data and
+ *      returns the DER signature, nothing else. The scalar never enters the shared buffer.
  */
 #include <cos_component.h>
 #include <llprint.h>
@@ -32,7 +37,12 @@
 #include <tlskey.h>
 #include <openssl/evp.h>
 #include <openssl/err.h>
+#include <openssl/core_names.h>
+#include <openssl/param_build.h>
 #include <cos_openssl.h>
+/* GENERATED with the guest image: cos-vmimg `make image RECIPE=tls-sign`, then
+ * `make install ... KEYDEST=<this directory>` (thirdparty/tlskey-sign/genkeys.sh) */
+#include "tlskey_sign_key.h"
 
 /*
  * One EVP_CIPHER_CTX per key slot, keyed once at SETKEY. GCM uses the same key schedule in both
@@ -56,6 +66,11 @@ static unsigned char *buf;
 static word_t         buf_len;
 static word_t         buf_gpa;
 static word_t         nerrands;
+
+/* Invariant 7: the signing key, and one signing context on it (sign_init once, as signbench's
+ * in-guest arm does); NULL if the key would not load, and SIGN then refuses. */
+static EVP_PKEY     *sign_key;
+static EVP_PKEY_CTX *sign_ctx;
 
 /* Invariant 1: every (off, len) the guest names is checked against our own mapping. */
 static inline int
@@ -291,6 +306,111 @@ op_selftest(void)
 	return ret;
 }
 
+/*
+ * SIGN (off, len, off_out): ECDSA P-256 over the 32-byte digest at off. The digest is copied out
+ * once and the signature is made in this component's memory, then copied to off_out after the
+ * bounds check against its actual length (invariant 1). Returns the DER length.
+ */
+static long
+op_sign(word_t off, word_t len, word_t off_out)
+{
+	unsigned char dg[TLSKEY_DIGEST_LEN], sig[TLSKEY_SIG_MAX];
+	size_t siglen = sizeof(sig);
+	long ret;
+
+	if (!buf) return TLSKEY_ENOBUF;
+	if (!sign_ctx || len != TLSKEY_DIGEST_LEN) return TLSKEY_EINVAL;
+	if (!in_buf(off, len)) return TLSKEY_ERANGE;
+	memcpy(dg, buf + off, TLSKEY_DIGEST_LEN);
+	if (EVP_PKEY_sign(sign_ctx, sig, &siglen, dg, TLSKEY_DIGEST_LEN) <= 0) {
+		ERR_clear_error();
+		return TLSKEY_EINVAL;
+	}
+	if (in_buf(off_out, siglen)) {
+		memcpy(buf + off_out, sig, siglen);
+		ret = (long)siglen;
+	} else {
+		ret = TLSKEY_ERANGE;
+	}
+	memset(sig, 0, sizeof(sig));
+
+	return ret;
+}
+
+/* PUBKEY (off_out): the signing key's public point, so the guest can check it against the
+ * certificate it serves. */
+static long
+op_pubkey(word_t off_out)
+{
+	if (!buf) return TLSKEY_ENOBUF;
+	if (!sign_key) return TLSKEY_EINVAL;
+	if (!in_buf(off_out, TLSKEY_PUB_LEN)) return TLSKEY_ERANGE;
+	memcpy(buf + off_out, tlskey_sign_pub, TLSKEY_PUB_LEN);
+
+	return TLSKEY_PUB_LEN;
+}
+
+/* An EVP_PKEY on P-256 from the embedded bytes: the key pair (priv != NULL) or the public point
+ * alone (for the self-test's verification). */
+static EVP_PKEY *
+sign_key_load(const unsigned char *priv)
+{
+	OSSL_PARAM_BLD *bld = OSSL_PARAM_BLD_new();
+	OSSL_PARAM *params = NULL;
+	EVP_PKEY_CTX *kctx = NULL;
+	EVP_PKEY *pkey = NULL;
+	BIGNUM *d = NULL;
+
+	if (!bld) return NULL;
+	if (!OSSL_PARAM_BLD_push_utf8_string(bld, OSSL_PKEY_PARAM_GROUP_NAME, "prime256v1", 0)
+	    || !OSSL_PARAM_BLD_push_octet_string(bld, OSSL_PKEY_PARAM_PUB_KEY, tlskey_sign_pub, TLSKEY_PUB_LEN))
+		goto done;
+	if (priv && (!(d = BN_secure_new()) || !BN_bin2bn(priv, 32, d)
+		     || !OSSL_PARAM_BLD_push_BN(bld, OSSL_PKEY_PARAM_PRIV_KEY, d)))
+		goto done;
+	if (!(params = OSSL_PARAM_BLD_to_param(bld))) goto done;
+	if (!(kctx = EVP_PKEY_CTX_new_from_name(NULL, "EC", NULL)) || EVP_PKEY_fromdata_init(kctx) <= 0
+	    || EVP_PKEY_fromdata(kctx, &pkey, priv ? EVP_PKEY_KEYPAIR : EVP_PKEY_PUBLIC_KEY, params) <= 0)
+		pkey = NULL;
+done:
+	EVP_PKEY_CTX_free(kctx);
+	OSSL_PARAM_free(params); /* the scalar's copy sits in the params' secure part: cleared on free */
+	OSSL_PARAM_BLD_free(bld);
+	BN_clear_free(d);
+
+	return pkey;
+}
+
+/*
+ * The signing self-test at cos_init: the key pair is consistent (the public point is the
+ * scalar's), a signature of a fixed digest made through op_sign's own context verifies under the
+ * embedded public point alone, and the same signature does not verify over a different digest.
+ */
+static int
+sign_selftest(void)
+{
+	unsigned char dg[TLSKEY_DIGEST_LEN], sig[TLSKEY_SIG_MAX];
+	size_t siglen = sizeof(sig);
+	EVP_PKEY *pub = sign_key_load(NULL);
+	EVP_PKEY_CTX *c = NULL;
+	int ok = 0, i;
+
+	for (i = 0; i < TLSKEY_DIGEST_LEN; i++) dg[i] = (unsigned char)i;
+	if (!pub || !(c = EVP_PKEY_CTX_new_from_pkey(NULL, sign_key, NULL)) || EVP_PKEY_pairwise_check(c) != 1) goto done;
+	EVP_PKEY_CTX_free(c);
+	if (EVP_PKEY_sign(sign_ctx, sig, &siglen, dg, sizeof(dg)) <= 0) { c = NULL; goto done; }
+	if (!(c = EVP_PKEY_CTX_new_from_pkey(NULL, pub, NULL)) || EVP_PKEY_verify_init(c) <= 0) goto done;
+	if (EVP_PKEY_verify(c, sig, siglen, dg, sizeof(dg)) != 1) goto done;
+	dg[0] ^= 1;
+	ok = EVP_PKEY_verify(c, sig, siglen, dg, sizeof(dg)) == 0;
+done:
+	ERR_clear_error();
+	EVP_PKEY_CTX_free(c);
+	EVP_PKEY_free(pub);
+
+	return ok;
+}
+
 word_t
 tlskey_op(word_t op_key, word_t a, word_t b, word_t c)
 {
@@ -324,6 +444,8 @@ tlskey_op(word_t op_key, word_t a, word_t b, word_t c)
 	case TLSKEY_OP_ARGS:
 		ret = (long)((a & 0xfffff) | ((b & 0xfffff) << 20) | ((c & 0xfffff) << 40));
 		break;
+	case TLSKEY_OP_SIGN:   ret = op_sign(a, b, c); break;
+	case TLSKEY_OP_PUBKEY: ret = op_pubkey(a); break;
 	default: ret = TLSKEY_EINVAL; break;
 	}
 
@@ -373,6 +495,18 @@ cos_init(void)
 	       TLSKEY_MAX_KEYS);
 	assert(ok && aes128gcm && aes256gcm && caps.aesni && caps.pclmul);
 	printc("tlskey: GCM self-test %s\n", op_selftest() == 0 ? "passed" : "FAILED");
+	/* invariant 7 */
+	if ((sign_key = sign_key_load(tlskey_sign_priv)) && (sign_ctx = EVP_PKEY_CTX_new_from_pkey(NULL, sign_key, NULL))
+	    && EVP_PKEY_sign_init(sign_ctx) <= 0) {
+		EVP_PKEY_CTX_free(sign_ctx);
+		sign_ctx = NULL;
+	}
+	if (sign_ctx && !sign_selftest()) {
+		EVP_PKEY_CTX_free(sign_ctx);
+		sign_ctx = NULL;
+	}
+	printc("tlskey: signing key %s (P-256, id %s): ECDSA self-test %s\n", sign_key ? "loaded" : "NOT LOADED",
+	       TLSKEY_SIGN_KEY_ID, sign_ctx ? "passed" : "FAILED (SIGN refuses)");
 	cos_openssl_heap(&used, &peak, &size);
 	printc("tlskey: libcrypto arena %lu KB in use, peak %lu KB, of %lu KB\n", used / 1024, peak / 1024, size / 1024);
 }

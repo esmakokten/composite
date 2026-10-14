@@ -42,6 +42,7 @@ $(OSSL_SRC)/libcrypto.a: $(OSSL_SRC)/configdata.pm
 	$(info |     [MAKE] OpenSSL $(OSSL_VER) libcrypto.a (build.log))
 	@$(MAKE) -s -C $(OSSL_SRC) build_generated > build.log 2>&1 || { tail build.log; exit 1; }
 	@$(MAKE) -s -C $(OSSL_SRC) -j$(shell nproc) libcrypto.a >> build.log 2>&1 || { grep -m5 error: build.log; exit 1; }
+	@rm -f $(SHLIB_FILE) # a thin archive over the old libcrypto.a: `ar crT` cannot append to it ("malformed archive")
 
 distclean: openssl-distclean
 .PHONY: openssl-distclean

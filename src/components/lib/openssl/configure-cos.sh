@@ -3,7 +3,10 @@
 # threads, files, sockets, dynamic loading or console, asm on (AES-NI, PCLMUL, the AVX stitched
 # AES-GCM), the tree's musl headers instead of the host's, no PIC, the large code model the
 # components are compiled with. (3.0.17 has no no-apps/no-docs; only libcrypto.a is built, so
-# neither is compiled.) The one place the configure line lives (CLAUDE.md trap 3):
+# neither is compiled.) Seeding is RDSEED/RDRAND only (--with-rand-seed=rdcpu): the default "os"
+# source starts with the getrandom system call, which asserts in a component; the DRBG is first
+# used by ECDSA signing (Phase 3), never by AES-GCM. The one place the configure line lives
+# (CLAUDE.md trap 3):
 # a re-configure always starts from a fresh extraction, so stale configdata.pm cannot survive.
 #
 # Usage: configure-cos.sh <tarball> <musl include dir>      (run from lib/openssl/)
@@ -30,6 +33,6 @@ cd "$SRC"
 ./Configure linux-x86_64 \
 	no-shared no-dso no-module no-pic no-threads no-async no-engine no-dynamic-engine \
 	no-afalgeng no-sock no-dgram no-stdio no-posix-io no-ui-console no-autoload-config \
-	no-filenames no-comp no-tests no-legacy \
+	no-filenames no-comp no-tests no-legacy --with-rand-seed=rdcpu \
 	CC=gcc CFLAGS="$CFLAGS" LDFLAGS= LDLIBS=
 perl configdata.pm -o

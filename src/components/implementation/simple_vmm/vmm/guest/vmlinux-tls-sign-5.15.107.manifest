@@ -1,0 +1,16 @@
+recipe:      tls-sign
+description: TLS key errand, Phase 3: the handshake signature by a SIGN errand
+kernel:      5.15.107 (unmodified upstream)
+busybox:     1.37.0
+programs:    g1_selftest.c signbench.c census.c ipc_perf.c tlsbench.c
+modules:     errandbuf.c
+init:        run_tls_sign.sh
+fragment:    none
+libs:        openssl nginx errand-provider tlskey-sign
+overlay:     tls-errand
+config:      sha256:cf43d4c2b04d9ed4
+initramfs:   sha256:5ecfec37ec0f6595
+image:       sha256:9cede930dbac2e0c
+image-bytes: 13611008
+overlay:     w5/phase2-nginx-3-g2b1863d-dirty
+built:       2026-10-14T15:18:03Z
