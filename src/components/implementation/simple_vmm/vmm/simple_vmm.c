@@ -25,6 +25,7 @@
 #include <nic_netio_shmem.h>
 #include <devices/vpci/virtio_net_io.h>
 #include <tlskey.h>
+#include <enclave.h>
 
 
 /* The guest image is named per composition: constants = [{variable = "VM_GUEST_IMAGE", ...}]. */
@@ -43,6 +44,9 @@ static u8_t g_num_vcpus = 1;
 /* The TLS key service's shared buffer: one 2 MB shared-page object, aliased into the VM (the
  * alias address is its guest-physical address) and into the service. */
 #define TLSKEY_BUF_SZ (2*1024*1024)
+/* The enclave component's shared buffer (the system-call bounce, w9): the same pattern, its own
+ * 2 MB object. */
+#define ENC_BUF_SZ (2*1024*1024)
 
 SS_STATIC_SLAB(vm_comp, struct vmrt_vm_comp, VM_MAX_COMPS);
 SS_STATIC_SLAB(vm_lapic, struct acrn_vlapic, VM_MAX_COMPS * VMRT_VM_MAX_VCPU);
@@ -167,6 +171,10 @@ void __attribute__((weak)) nic_netio_shmem_map(cbuf_t shm_id);
 word_t __attribute__((weak)) tlskey_attach(word_t shm_id, word_t gpa, word_t len, word_t unused);
 word_t __attribute__((weak)) tlskey_op(word_t op_key, word_t a, word_t b, word_t c);
 extern struct usr_inv_cap __attribute__((weak)) __cosrt_ucap_tlskey_op;
+/* Weak usage of the enclave interface (w9): only compositions with the component link its stubs. */
+word_t __attribute__((weak)) enclave_attach(word_t shm_id, word_t gpa, word_t len, word_t unused);
+word_t __attribute__((weak)) enclave_op(word_t op, word_t a, word_t b, word_t c);
+extern struct usr_inv_cap __attribute__((weak)) __cosrt_ucap_enclave_op;
 
 void
 cos_init(void)
@@ -223,6 +231,39 @@ cos_init(void)
 		}
 	} else {
 		printc("VMM: no tlskey service in this composition; slot %d stays empty\n", TLSKEY_SLOT);
+	}
+
+	/*
+	 * The enclave component, slot 4 (the system-call bounce, w9): the tlskey pattern above with
+	 * its own 2 MB buffer; a native INFO_LEN checks the entry before the slot is installed.
+	 * Slots 2 and 3 are reserved for w10's kvstore and tprobe.
+	 */
+	if (enclave_attach && &__cosrt_ucap_enclave_op) {
+		vaddr_t mem = 0, gpa = 0;
+		cbuf_t  id;
+		unsigned long npages;
+		word_t  r;
+		int     ret;
+
+		id = memmgr_shared_page_allocn_aligned(ENC_BUF_SZ / PAGE_SIZE_4K, PAGE_SIZE_4K, &mem);
+		assert(id && mem);
+		memset((void *)mem, 0, ENC_BUF_SZ);
+		npages = memmgr_shared_page_map_aligned_in_vm(id, PAGE_SIZE_4K, &gpa, g_vm->comp_id);
+		assert(npages == ENC_BUF_SZ / PAGE_SIZE_4K && gpa);
+		r = enclave_attach(id, gpa, ENC_BUF_SZ, 0);
+		printc("VMM: enclave buffer: shm %lu, %u KB, vmm vaddr %lx, guest-physical %lx, attach -> %ld\n",
+		       (unsigned long)id, ENC_BUF_SZ / 1024, mem, gpa, (long)r);
+		r = enclave_op(ENC_OP_INFO_LEN, 0, 0, 0);
+		printc("VMM: enclave INFO_LEN (native sinv) -> %ld (%s)\n", (long)r, r == ENC_BUF_SZ ? "ok" : "FAILED");
+		ret = capmgr_vm_sinv_install(g_vm->comp_id, __cosrt_ucap_enclave_op.cap_no, ENC_SLOT);
+		if (ret) {
+			printc("VMM: WARNING: failed to install enclave_op (ret=%d)\n", ret);
+		} else {
+			printc("VMM: Installed enclave_op at slot %d (captbl[%lu])\n", ENC_SLOT,
+			       VM_IPC_SINV_CAP_BASE + ENC_SLOT * captbl_idsize(CAP_SINV));
+		}
+	} else {
+		printc("VMM: no enclave component in this composition; slot %d stays empty\n", ENC_SLOT);
 	}
 
 	if (nic_netio_shmem_map) {

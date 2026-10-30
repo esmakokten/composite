@@ -1,0 +1,16 @@
+recipe:      enclave-bench
+description: System-call bounce: P0 null, P1 getpid, P2 Veil's seven, bounced through the enclave component and native
+kernel:      5.15.107 (unmodified upstream)
+busybox:     1.37.0
+programs:    encbench.c ipc_perf.c
+modules:     errandbuf.c
+init:        run_enclave_bench.sh
+fragment:    none
+libs:        none
+overlay:     none
+config:      sha256:3a0e6aa12986d492
+initramfs:   sha256:4f9c5afe5d79b646
+image:       sha256:7f6e5c4e77364221
+image-bytes: 6295552
+overlay:     w5/phase2-nginx-5-g2d769a9
+built:       2026-10-30T21:10:21Z
