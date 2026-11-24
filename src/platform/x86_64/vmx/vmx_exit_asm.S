@@ -1,3 +1,5 @@
+#include "chal/shared/cos_config.h"
+
 .section .text
 .code64
 
@@ -28,6 +30,19 @@ vmx_exit_handler_asm:
 	andq $0xffff, %rax
 	cmpq $18, %rax
 	jne vmx_slow_path
+#if VMCALL_IDENTITY
+	/*
+	 * w11: a vmcall from guest ring 0 is not a process call. It is the control plane
+	 * (registration), so it takes the slow path to the VMM's vmcall_handler. The CPL is
+	 * the DPL of SS: access rights (0x4818) bits 5-6. The guest rax is still on the stack,
+	 * where vmx_slow_path pops it.
+	 */
+	movq $0x4818, %rax
+	vmread %rax, %rax
+	andq $0x60, %rax
+	cmpq $0x60, %rax
+	jne vmx_slow_path
+#endif
 	/* Static branch predictor, Jump forward is undesired, loop mechanisms
 
 vmcall_fast_path:

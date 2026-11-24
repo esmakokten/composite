@@ -21,7 +21,7 @@ static unsigned long cr3pol_switches, cr3pol_skips, cr3pol_errands;
  * w11 identity counters: counted, never printed from the fast path (invariant 1). Racy
  * increments across vCPUs, like the CR3-policy counters above: diagnostics, not accounting.
  */
-static unsigned long vmcall_id_hits, vmcall_id_misses, vmcall_id_ring0, vmcall_id_badslot;
+static unsigned long vmcall_id_hits, vmcall_id_misses, vmcall_id_badslot;
 #endif
 
 void lapic_ack(void);
@@ -332,14 +332,10 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 		unsigned long       root;
 
 		/*
-		 * (a) The CPL is the DPL of SS (access rights bits 5-6). A ring-0 vmcall is not a
-		 * process call: registration reaches the VMM on the slow path (step 1.6).
-		 */
-		if (unlikely(((vmread(GUEST_SS_ACCESS_RIGHTS) >> 5) & 0x3) != 3)) {
-			vmcall_id_ring0++;
-			goto refuse;
-		}
-		/* (b) The process: CR3 without the PCID, PTI's bit 12 and the no-flush bit. */
+		 * (a) Ring 3 only: vmx_exit_asm.S already sent any vmcall whose CPL (the DPL of SS)
+		 * is not 3 to the slow path, where the VMM handles registration and refuses the rest.
+		 *
+		 * (b) The process: CR3 without the PCID, PTI's bit 12 and the no-flush bit. */
 		root = vmread(GUEST_CR3) & VM_PROC_ROOT_MASK;
 		/* (c) The VM's process table, found by the VM component's ASID. */
 		pt  = likely(curr_ci) ? vm_proc_tbl_get(curr_ci->pgtblinfo.protdom) : NULL;
