@@ -149,6 +149,14 @@
 
 #define CONFIG_VMX 1
 #define VMX_SUPPORT_POSTED_INTR 0
+/*
+ * w11_vmcall_identity. VMCALL_IDENTITY: the vmcall fast path takes the capability table of the
+ * guest process named by GUEST_CR3 (ring 3, registered) instead of the VM component's, and
+ * refuses everything else. VMCALL_RESUME_RIP3: the errand resumes at GUEST_RIP + 3, computed
+ * by the kernel, instead of at the guest-supplied r8/r9. Both 0 = the old behaviour.
+ */
+#define VMCALL_IDENTITY 0
+#define VMCALL_RESUME_RIP3 0
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4
