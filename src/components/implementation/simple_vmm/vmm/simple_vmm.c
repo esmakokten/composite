@@ -160,25 +160,30 @@ vm_comp_create(void)
 
 /*
  * w11 step 1.2: the process-table operations, once at boot. The VM component stands in for
- * a process component (it is on the VM's page table by definition); the root is made up.
+ * a process component (it is on the VM's page table by definition); the roots are made up.
  * A second register finding the root (-EEXIST) and a second unregister missing it
- * (-ENOENT) are the lookups. The table is empty again afterwards.
+ * (-ENOENT) are the lookups; a root differing only in bit 12 is a different process (A8).
+ * The table is empty again afterwards.
  */
 static void
 vm_proc_unit_check(void)
 {
-	const word_t root = 0x123456000UL;
-	int reg, dup, bad, unreg, unreg2;
+	const word_t root = 0x123456000UL, root_b12 = 0x123457000UL; /* differ only in bit 12 (A8) */
+	int reg, dup, b12, bad, unreg, unreg2, unreg_b12;
 
-	reg    = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root);
-	dup    = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root);
-	bad    = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root | 1);
-	unreg  = capmgr_vm_proc_unregister(g_vm->comp_id, root);
-	unreg2 = capmgr_vm_proc_unregister(g_vm->comp_id, root);
+	reg       = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root);
+	dup       = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root);
+	b12       = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root_b12);
+	bad       = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root | 1);
+	unreg     = capmgr_vm_proc_unregister(g_vm->comp_id, root);
+	unreg2    = capmgr_vm_proc_unregister(g_vm->comp_id, root);
+	unreg_b12 = capmgr_vm_proc_unregister(g_vm->comp_id, root_b12);
 
-	printc("VMM: proc table unit check: register %d, again %d, unmasked root %d, unregister %d, again %d: %s\n",
-	       reg, dup, bad, unreg, unreg2,
-	       (reg == 0 && dup == -EEXIST && bad == -EINVAL && unreg == 0 && unreg2 == -ENOENT) ? "PASS" : "FAIL");
+	printc("VMM: proc table unit check: register %d, again %d, bit-12 neighbour %d, unmasked root %d, "
+	       "unregister %d, again %d, neighbour %d: %s\n",
+	       reg, dup, b12, bad, unreg, unreg2, unreg_b12,
+	       (reg == 0 && dup == -EEXIST && b12 == 0 && bad == -EINVAL && unreg == 0 && unreg2 == -ENOENT
+	        && unreg_b12 == 0) ? "PASS" : "FAIL");
 }
 
 /* Weak usage of nicmgr interface */

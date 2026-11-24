@@ -26,7 +26,7 @@
 #define VM_PROC_ACCESS(x) (*(volatile typeof(x) *)&(x))
 #define VM_PROC_BARRIER() __asm__ __volatile__("" ::: "memory")
 
-/* Never a masked root (its low 13 bits are clear): marks an entry being written. */
+/* Never a masked root (its low 12 bits are clear): marks an entry being written. */
 #define VM_PROC_ROOT_CLAIMED 1UL
 
 struct vm_proc_ent {

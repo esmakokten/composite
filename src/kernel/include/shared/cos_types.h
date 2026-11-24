@@ -701,12 +701,14 @@ enum {
  * w11: the per-VM process table (kernel/include/vm_proc.h). A VM's table is found by its
  * component's ASID: VM components get ASIDs from VM_PROC_ASID_BASE up
  * (PROTDOM_ASID_VM_BASE in components/lib/protdom/protdom.h; keep the two equal).
- * A root is a guest CR3 with the PCID (bits 0-11), PTI's user/kernel bit (12) and the
- * no-flush bit (63) cleared, so both PTI roots of one process are the same process.
+ * A root is a guest CR3 with the PCID (bits 0-11) and the no-flush bit (63) cleared. Bit 12
+ * is an address bit and is kept (DECISIONS A8): without PTI a PGD is one 4 KiB page at any
+ * 4 KiB address; under PTI a process has two roots (root, root + 4096), registered as two
+ * entries of the same process component.
  */
 #define VM_PROC_MAX         16
 #define VM_PROC_MAX_VMS     8
 #define VM_PROC_ASID_BASE   2048
-#define VM_PROC_ROOT_MASK   (~(0x1FFFUL | (1UL << 63)))
+#define VM_PROC_ROOT_MASK   (~(0xFFFUL | (1UL << 63)))
 
 #endif /* TYPES_H */

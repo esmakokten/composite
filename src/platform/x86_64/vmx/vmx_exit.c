@@ -335,7 +335,7 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 		 * (a) Ring 3 only: vmx_exit_asm.S already sent any vmcall whose CPL (the DPL of SS)
 		 * is not 3 to the slow path, where the VMM handles registration and refuses the rest.
 		 *
-		 * (b) The process: CR3 without the PCID, PTI's bit 12 and the no-flush bit. */
+		 * (b) The process: CR3 without the PCID and the no-flush bit (bit 12 is kept: A8). */
 		root = vmread(GUEST_CR3) & VM_PROC_ROOT_MASK;
 		/* (c) The VM's process table, found by the VM component's ASID. */
 		pt  = likely(curr_ci) ? vm_proc_tbl_get(curr_ci->pgtblinfo.protdom) : NULL;
