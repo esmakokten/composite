@@ -9,6 +9,8 @@
 #include <static_slab.h>
 #include <sched.h>
 #include <capmgr.h>
+#include <pong.h>
+#include "errand_id_abi.h"
 #include <contigmem.h>
 #include <shm_bm.h>
 #include <vmrt.h>
@@ -184,6 +186,50 @@ vm_proc_unit_check(void)
 	       reg, dup, b12, bad, unreg, unreg2, unreg_b12,
 	       (reg == 0 && dup == -EEXIST && b12 == 0 && bad == -EINVAL && unreg == 0 && unreg2 == -ENOENT
 	        && unreg_b12 == 0) ? "PASS" : "FAIL");
+}
+
+/*
+ * w11 step 1.6: the control plane. A vmcall from guest ring 0 arrives here (the exit entry
+ * sends CPL != 3 to the slow path under VMCALL_IDENTITY), with the guest's registers in the
+ * shared region. rax is an ERRAND_ID_OP_* (errand_id_abi.h); anything else, including an
+ * errand slot, is refused with -ENOSYS: a ring-0 vmcall never reaches a service. Always
+ * resumes at RIP + 3. Counted, printed only on ERRAND_ID_OP_COUNTERS.
+ */
+static struct {
+	unsigned long reg_ok, reg_fail, unreg_ok, unreg_fail, counters, refused;
+} vm_id_ctr;
+
+void
+vmcall_handler(struct vmrt_vm_vcpu *vcpu)
+{
+	struct vm_vcpu_shared_region *regs = vcpu->shared_region;
+	long ret;
+
+	switch (regs->ax) {
+	case ERRAND_ID_OP_REGISTER:
+		ret = capmgr_vm_proc_register(g_vm->comp_id, g_vm_proc, regs->bx);
+		if (ret) vm_id_ctr.reg_fail++; else vm_id_ctr.reg_ok++;
+		break;
+	case ERRAND_ID_OP_UNREGISTER:
+		ret = capmgr_vm_proc_unregister(g_vm->comp_id, regs->bx);
+		if (ret) vm_id_ctr.unreg_fail++; else vm_id_ctr.unreg_ok++;
+		break;
+	case ERRAND_ID_OP_COUNTERS:
+		vm_id_ctr.counters++;
+		printc("VMM: identity counters: register ok %lu fail %lu, unregister ok %lu fail %lu, "
+		       "refused ring-0 %lu, counter dumps %lu\n",
+		       vm_id_ctr.reg_ok, vm_id_ctr.reg_fail, vm_id_ctr.unreg_ok, vm_id_ctr.unreg_fail,
+		       vm_id_ctr.refused, vm_id_ctr.counters);
+		pong_call(); /* the service's own invocation counts (T2) */
+		ret = 0;
+		break;
+	default:
+		vm_id_ctr.refused++;
+		ret = -ERRAND_ID_ENOSYS;
+		break;
+	}
+	regs->ax = (u64_t)ret;
+	GOTO_NEXT_INST(regs);
 }
 
 /* Weak usage of nicmgr interface */

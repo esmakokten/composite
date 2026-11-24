@@ -49,11 +49,22 @@ parallel_main(coreid_t cid)
 	state = PONG_PARMAIN;
 }
 
+#if VMCALL_IDENTITY
+/*
+ * w11 T2: how often the errand services ran. The VMM's identity-counter dump calls pong_call,
+ * which prints these. Racy across cores; T2 runs one vCPU's calls at a time.
+ */
+static unsigned long pong_args_calls, pong_argsrets_calls;
+#endif
+
 /* We assume that ping will call pong_call upon initialization. */
 void
 pong_call(void)
 {
 	assert(state >= PONG_PARINIT);
+#if VMCALL_IDENTITY
+	printc("pong: invocations: pong_args %lu, pong_argsrets %lu\n", pong_args_calls, pong_argsrets_calls);
+#endif
 
 	return;
 }
@@ -73,6 +84,9 @@ pong_arg(int p1)
 int
 pong_args(int p1, int p2, int p3, int p4)
 {
+#if VMCALL_IDENTITY
+	pong_args_calls++;
+#endif
 	return p1 + p2 + p3 + p4;
 }
 
@@ -89,6 +103,9 @@ pong_argsrets(int p0, int p1, int p2, int p3, word_t *r0, word_t *r1)
 {
 	*r0 = p0;
 	*r1 = p1;
+#if VMCALL_IDENTITY
+	pong_argsrets_calls++;
+#endif
 
 	return p2 + p3;
 }
