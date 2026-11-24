@@ -11,9 +11,18 @@
 #include <vmx_vmcs.h>
 #include <vmx_exit.h>
 #include <inv.h>
+#include <vm_proc.h>
 
 /* diag counters for the CR3 policy: expect one switch, then only skips */
 static unsigned long cr3pol_switches, cr3pol_skips, cr3pol_errands;
+
+#if VMCALL_IDENTITY
+/*
+ * w11 identity counters: counted, never printed from the fast path (invariant 1). Racy
+ * increments across vCPUs, like the CR3-policy counters above: diagnostics, not accounting.
+ */
+static unsigned long vmcall_id_hits, vmcall_id_misses, vmcall_id_ring0, vmcall_id_badslot;
+#endif
 
 void lapic_ack(void);
 void restore_from_vm(void);
@@ -290,7 +299,9 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 
 	/* Decode sinv cap using same formula as __userregs_getcap */
 	cap = (regs->ax >> COS_CAPABILITY_OFFSET) - 1;
+#if !VMCALL_IDENTITY
 	thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST;
+#endif
 	/*
 	 * No guest MSR save remains on this path. Each was removed with the
 	 * argument for why the guest's value does not need recording here:
@@ -310,6 +321,43 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	/* Look up the sinv cap and target comp_info */
 	unsigned long ip, sp;
 	curr_ci = thd_invstk_current(thd_curr, &ip, &sp, cos_info);
+#if VMCALL_IDENTITY
+	/*
+	 * w11: who may make the vmcall. Only ring 3 of a registered process, through that
+	 * process's own capability table. Invariant 1: no printk here, on success or refusal.
+	 */
+	{
+		struct vm_proc_tbl *pt;
+		struct comp_info   *pci;
+		unsigned long       root;
+
+		/*
+		 * (a) The CPL is the DPL of SS (access rights bits 5-6). A ring-0 vmcall is not a
+		 * process call: registration reaches the VMM on the slow path (step 1.6).
+		 */
+		if (unlikely(((vmread(GUEST_SS_ACCESS_RIGHTS) >> 5) & 0x3) != 3)) {
+			vmcall_id_ring0++;
+			goto refuse;
+		}
+		/* (b) The process: CR3 without the PCID, PTI's bit 12 and the no-flush bit. */
+		root = vmread(GUEST_CR3) & VM_PROC_ROOT_MASK;
+		/* (c) The VM's process table, found by the VM component's ASID. */
+		pt  = likely(curr_ci) ? vm_proc_tbl_get(curr_ci->pgtblinfo.protdom) : NULL;
+		pci = likely(pt) ? vm_proc_lkup(pt, root) : NULL;
+		if (unlikely(!pci)) {
+			vmcall_id_misses++;
+			goto refuse;
+		}
+		sinvc = (struct cap_sinv *)captbl_lkup(pci->captbl, cap);
+		if (unlikely(!sinvc || sinvc->h.type != CAP_SINV)) {
+			vmcall_id_badslot++;
+			goto refuse;
+		}
+		vmcall_id_hits++;
+	}
+	/* Only now: a refused call must leave the vCPU RUNNING (vmx_resume asserts it). */
+	thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST;
+#else
 	if (unlikely(!curr_ci)) {
 		printk("cos: vmcall fast: no comp_info\n");
 		regs->ax = (word_t)-EINVAL;
@@ -324,6 +372,7 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 		vmwrite(GUEST_RIP, regs->r8);
 		return;
 	}
+#endif
 
 	/*
 	 * Restore host MSRs from per-CPU cache (constant per core).
@@ -331,8 +380,13 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * uses syscall, which depends on host STAR/LSTAR/FMASK.
 	 */
 
+#if VMCALL_RESUME_RIP3
+	/* Invariant 6: the kernel computes the resume address; vmcall is 3 bytes (0f 01 c1). */
+	vmwrite(GUEST_RIP, vmread(GUEST_RIP) + 3);
+#else
 	/* Only GUEST_RIP needs updating (r9 holds the return address) */
 	vmwrite(GUEST_RIP, regs->r9);
+#endif
 	/*
 	 * CR3 policy: point HOST_CR3 at the errand server, so the VM exit's own
 	 * hardware load installs the server's page table -- hardware loads carry no
@@ -357,17 +411,33 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 
 		sinv_call_ext(thd_curr, sinvc, regs, cos_info, need_switch);
 
+#if !VMCALL_IDENTITY
 		if (unlikely(++cr3pol_errands % 100000 == 0)) {
 			printk("diag: cr3pol errands %lu switches %lu skips %lu host_cr3 %lx\n",
 			       cr3pol_errands, cr3pol_switches, cr3pol_skips,
 			       (unsigned long)thd_curr->vcpu_ctx.vmcs.host_cr3);
 		}
+#endif
 	}	
 	/* no thread switch → restore_from_vm → sysretq */
 	__asm__ volatile("movq %%rbx, %%rsp; jmpq *%%rcx":
 			 : "a"(ret), "b"(regs),"c"(&restore_from_vm));
 	/* Should never come here */
 	vmx_assert(0);
+#if VMCALL_IDENTITY
+refuse:
+	/*
+	 * Refused: nothing was invoked and the state is still RUNNING. Returning is the refusal
+	 * path: the assembly pops these registers and vmresumes (vmx_exit_asm.S:59-78).
+	 */
+	regs->ax = (word_t)-EPERM;
+#if VMCALL_RESUME_RIP3
+	vmwrite(GUEST_RIP, vmread(GUEST_RIP) + 3);
+#else
+	vmwrite(GUEST_RIP, regs->r8);
+#endif
+	return;
+#endif
 }
 
 void
