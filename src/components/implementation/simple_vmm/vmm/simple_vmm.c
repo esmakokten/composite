@@ -164,11 +164,13 @@ cos_init(void)
 	printc("VMM: Created VM with %d vCPUs: comp_id=%lu, %p\n", g_num_vcpus, g_vm->comp_id, g_vm);
 
 	/*
-	 * VM IPC: Install pong sinv cap into the VM component's captbl
-	 * Slot 0: pong_args (sum of 4 arguments)
+	 * VM IPC: Install pong sinv caps into the VM component's captbl
+	 * Slot 0: pong_args (sum of 4 arguments), id 64
+	 * Slot 1: pong_argsrets, id 68 (a sinv is 4 ids wide: slot s is id 64 + 4s)
 	 */
 	{
 		extern struct usr_inv_cap __cosrt_ucap_pong_args;
+		extern struct usr_inv_cap __cosrt_ucap_pong_argsrets;
 		int ret;
 
 		ret = capmgr_vm_sinv_install(g_vm->comp_id, __cosrt_ucap_pong_args.cap_no, 0);
@@ -177,6 +179,13 @@ cos_init(void)
 		} else {
 			printc("VMM: Installed pong_args at slot 0 (captbl[%d])\n",
 			       VM_IPC_SINV_CAP_BASE);
+		}
+		ret = capmgr_vm_sinv_install(g_vm->comp_id, __cosrt_ucap_pong_argsrets.cap_no, 1);
+		if (ret) {
+			printc("VMM: WARNING: failed to install pong_argsrets (ret=%d)\n", ret);
+		} else {
+			printc("VMM: Installed pong_argsrets at slot 1 (captbl[%d])\n",
+			       VM_IPC_SINV_CAP_BASE + 4);
 		}
 	}
 
