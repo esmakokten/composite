@@ -31,6 +31,11 @@ INCBIN(bios, "guest/guest.img")
 
 /* Only one VM component globally managed by this VMM */
 static struct vmrt_vm_comp *g_vm;
+/*
+ * w11: the process component for the guest process P (its own captbl on the VM's EPT, the
+ * errand slots copied in). The ring-0 registration vmcall binds P's root to it (step 1.6).
+ */
+static compid_t g_vm_proc;
 static u8_t g_num_vcpus = 1;  
 
 #define VM_MAX_COMPS (2)
@@ -213,6 +218,15 @@ cos_init(void)
 	}
 
 	vm_proc_unit_check();
+
+	/* Slots 0 and 1, as installed above; the copies carry the VMM's token (DECISIONS Q6). */
+	g_vm_proc = capmgr_vm_proc_create(g_vm->comp_id, 0x3);
+	if (g_vm_proc) {
+		printc("VMM: process component created: comp %lu, slots 0x3, token %lu (the VMM's id)\n",
+		       (unsigned long)g_vm_proc, (unsigned long)cos_compid());
+	} else {
+		printc("VMM: WARNING: process component creation failed\n");
+	}
 
 	if (nic_netio_shmem_map) {
 		/* Create TX thread for transmitting packets to NIC */

@@ -207,6 +207,14 @@ COS_CLIENT_STUB(int, capmgr_vm_sinv_install, compid_t vm_comp_id, capid_t sinv_c
 	return cos_sinv_2rets(uc, vm_comp_id, sinv_cap, slot, 0, &unused1, &unused2);
 }
 
+COS_CLIENT_STUB(compid_t, capmgr_vm_proc_create, compid_t vm_comp_id, word_t slot_mask)
+{
+	COS_CLIENT_INVCAP;
+	word_t unused1, unused2;
+
+	return cos_sinv_2rets(uc, vm_comp_id, slot_mask, 0, 0, &unused1, &unused2);
+}
+
 COS_CLIENT_STUB(int, capmgr_vm_proc_register, compid_t vm_comp_id, compid_t proc_comp_id, word_t root)
 {
 	COS_CLIENT_INVCAP;

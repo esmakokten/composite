@@ -169,6 +169,11 @@ COS_SERVER_3RET_STUB(int, capmgr_vm_sinv_install)
 	return capmgr_vm_sinv_install(p0, p1, p2);
 }
 
+COS_SERVER_3RET_STUB(compid_t, capmgr_vm_proc_create)
+{
+	return capmgr_vm_proc_create(p0, p1);
+}
+
 COS_SERVER_3RET_STUB(int, capmgr_vm_proc_register)
 {
 	return capmgr_vm_proc_register(p0, p1, p2);

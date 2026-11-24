@@ -1128,6 +1128,54 @@ vm_proc_comps(compid_t vm_comp_id, compid_t proc_comp_id, compcap_t *vmc, compca
 	return 0;
 }
 
+compid_t
+capmgr_vm_proc_create(compid_t vm_comp_id, word_t slot_mask)
+{
+	struct cm_comp      *vmm = ss_comp_get((compid_t)cos_inv_token());
+	struct cm_comp      *vm  = ss_comp_get(vm_comp_id);
+	struct cos_compinfo *self_ci, *vm_ci, *p_ci;
+	struct cm_comp      *p;
+	captblcap_t          ctc;
+	compcap_t            compc;
+	compid_t             id;
+	int                  s;
+
+	if (!vmm || !vm || vm->comp.vm_comp_info.vmm_comp_id != vmm->comp.id) return 0;
+	if (slot_mask >> VM_IPC_MAX_SINV_CAPS) return 0;
+
+	self_ci = cos_compinfo_get(cos_defcompinfo_curr_get());
+	vm_ci   = cos_compinfo_get(vm->comp.comp_res);
+
+	id = crt_comp_id_new();
+	p  = ss_comp_alloc_at_id(id);
+	assert(p);
+	crt_vm_comp_init(&p->comp, "vmproc", id, 0);
+	p->comp.protdom                 = vm->comp.protdom;
+	p->comp.vm_comp_info.vmm_comp_id = vmm->comp.id;
+	p_ci            = cos_compinfo_get(p->comp.comp_res);
+	p_ci->comp_type = COMP_TYPE_VM;
+
+	/* Its own captbl; the VM's page table (the EPT) and protection domain. */
+	ctc = cos_captbl_alloc(self_ci);
+	assert(ctc);
+	compc = cos_comp_alloc(self_ci, ctc, vm_ci->pgtbl_cap, 0, vm->comp.protdom);
+	assert(compc);
+	/* Bookkeeping only: the captbl's first node (ids 0-127) holds every errand slot (64-124). */
+	cos_compinfo_init(p_ci, vm_ci->pgtbl_cap, ctc, compc, PAGE_SIZE_4K, CAPTBL_EXPAND_SZ, self_ci);
+
+	for (s = 0; s < VM_IPC_MAX_SINV_CAPS; s++) {
+		capid_t slot = VM_IPC_SINV_CAP_BASE + s * captbl_idsize(CAP_SINV);
+
+		if (!(slot_mask & (1UL << s))) continue;
+		if (cos_cap_cpy_at(p_ci, slot, vm_ci, slot)) return 0;
+	}
+	ss_comp_activate(p);
+	printc("capmgr: process component %ld of VM %ld: captbl cap %lu, comp cap %lu, slots 0x%lx\n",
+	       id, vm_comp_id, (unsigned long)ctc, (unsigned long)compc, (unsigned long)slot_mask);
+
+	return id;
+}
+
 int
 capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root)
 {

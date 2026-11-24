@@ -97,6 +97,13 @@ int COS_STUB_DECL(capmgr_vm_sinv_install)(compid_t vm_comp_id, capid_t sinv_cap,
  * proc_comp_id of the calling VMM's VM, and unbind it. Both return 0 or a negative errno
  * (-EEXIST: already bound; -ENOENT: not bound; -ENOMEM: the VM's table is full).
  */
+/*
+ * w11: create a process component of the calling VMM's VM: a captbl of its own on the VM's page
+ * table, holding copies of the VM's errand slots named in slot_mask (bit s = slot s, id 64 + 4s).
+ * The copies keep their tokens (DECISIONS Q6). Returns the new component's id, or 0.
+ */
+compid_t capmgr_vm_proc_create(compid_t vm_comp_id, word_t slot_mask);
+compid_t COS_STUB_DECL(capmgr_vm_proc_create)(compid_t vm_comp_id, word_t slot_mask);
 int capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root);
 int COS_STUB_DECL(capmgr_vm_proc_register)(compid_t vm_comp_id, compid_t proc_comp_id, word_t root);
 int capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root);
