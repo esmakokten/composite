@@ -92,4 +92,14 @@ thdcap_t COS_STUB_DECL(capmgr_vm_vcpu_create)(compid_t vm_comp, vm_vmcb_t vmcb_c
 int capmgr_vm_sinv_install(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot);
 int COS_STUB_DECL(capmgr_vm_sinv_install)(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot);
 
+/*
+ * w11: bind the guest page-table root `root` (a masked CR3) to the process component
+ * proc_comp_id of the calling VMM's VM, and unbind it. Both return 0 or a negative errno
+ * (-EEXIST: already bound; -ENOENT: not bound; -ENOMEM: the VM's table is full).
+ */
+int capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root);
+int COS_STUB_DECL(capmgr_vm_proc_register)(compid_t vm_comp_id, compid_t proc_comp_id, word_t root);
+int capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root);
+int COS_STUB_DECL(capmgr_vm_proc_unregister)(compid_t vm_comp_id, word_t root);
+
 #endif /* CAPMGR_H */

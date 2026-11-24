@@ -1105,6 +1105,51 @@ capmgr_vm_sinv_install(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot)
 	return 0;
 }
 
+/*
+ * w11: the per-VM process table. The VMM names its VM and a process component of that VM
+ * (one on the VM's page table, made by capmgr_vm_proc_create); the kernel checks the rest
+ * (kernel/include/vm_proc.h).
+ */
+static int
+vm_proc_comps(compid_t vm_comp_id, compid_t proc_comp_id, compcap_t *vmc, compcap_t *pc)
+{
+	struct cm_comp *vmm = ss_comp_get((compid_t)cos_inv_token());
+	struct cm_comp *vm  = ss_comp_get(vm_comp_id);
+
+	if (!vmm || !vm || vm->comp.vm_comp_info.vmm_comp_id != vmm->comp.id) return -EINVAL;
+	*vmc = cos_compinfo_get(vm->comp.comp_res)->comp_cap;
+	if (pc) {
+		struct cm_comp *p = ss_comp_get(proc_comp_id);
+
+		if (!p) return -EINVAL;
+		*pc = cos_compinfo_get(p->comp.comp_res)->comp_cap;
+	}
+
+	return 0;
+}
+
+int
+capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root)
+{
+	compcap_t vmc, pc;
+	int       ret;
+
+	if ((ret = vm_proc_comps(vm_comp_id, proc_comp_id, &vmc, &pc))) return ret;
+
+	return cos_vm_proc_register(cos_compinfo_get(cos_defcompinfo_curr_get()), vmc, pc, root);
+}
+
+int
+capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root)
+{
+	compcap_t vmc;
+	int       ret;
+
+	if ((ret = vm_proc_comps(vm_comp_id, 0, &vmc, NULL))) return ret;
+
+	return cos_vm_proc_unregister(cos_compinfo_get(cos_defcompinfo_curr_get()), vmc, root);
+}
+
 thdcap_t  capmgr_aep_create_thunk(struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax) { BUG(); return 0; }
 thdcap_t  capmgr_aep_create_ext(spdid_t child, struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax, arcvcap_t *extrcv) { BUG(); return 0; }
 asndcap_t capmgr_asnd_create(spdid_t child, thdid_t t) { BUG(); return 0; }

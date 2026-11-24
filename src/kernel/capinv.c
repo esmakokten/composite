@@ -18,6 +18,10 @@
 #include "include/chal/chal_proto.h"
 #include "include/ulk.h"
 #include "include/vm.h"
+#include "include/vm_proc.h"
+
+/* w11: one process table per VM, indexed by the VM component's ASID (vm_proc.h). */
+struct vm_proc_tbl vm_proc_tbls[VM_PROC_MAX_VMS];
 
 
 #define COS_DEFAULT_RET_CAP 0
@@ -1563,6 +1567,21 @@ static sword_t __attribute__((noinline)) composite_syscall_slowpath(struct pt_re
 
 			ret = ulk_activate(ct, cap, ulkcap, lid, (vaddr_t)stk_mem, ptcapin, uaddrin);
 			if (ret) kmem_unalloc(pte);
+			break;
+		}
+		case CAPTBL_OP_VM_PROC_REGISTER: {
+			capid_t       vm_comp_cap   = __userregs_get1(regs);
+			capid_t       proc_comp_cap = __userregs_get2(regs);
+			unsigned long root          = __userregs_get3(regs);
+
+			ret = vm_proc_register(ct, vm_comp_cap, proc_comp_cap, root);
+			break;
+		}
+		case CAPTBL_OP_VM_PROC_UNREGISTER: {
+			capid_t       vm_comp_cap = __userregs_get1(regs);
+			unsigned long root        = __userregs_get2(regs);
+
+			ret = vm_proc_unregister(ct, vm_comp_cap, root);
 			break;
 		}
 		default:

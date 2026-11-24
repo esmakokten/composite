@@ -175,6 +175,10 @@ typedef enum {
 
 	CAPTBL_OP_ULK_MEMACTIVATE,
 
+	/* w11: bind a guest process (page-table root) to a process component, and unbind it */
+	CAPTBL_OP_VM_PROC_REGISTER,
+	CAPTBL_OP_VM_PROC_UNREGISTER,
+
 } syscall_op_t;
 
 typedef enum {
@@ -692,5 +696,17 @@ enum {
 /* VM IPC: sinv caps for vmcall-based IPC start at this captbl slot in the VM component */
 #define VM_IPC_SINV_CAP_BASE 64
 #define VM_IPC_MAX_SINV_CAPS 16
+
+/*
+ * w11: the per-VM process table (kernel/include/vm_proc.h). A VM's table is found by its
+ * component's ASID: VM components get ASIDs from VM_PROC_ASID_BASE up
+ * (PROTDOM_ASID_VM_BASE in components/lib/protdom/protdom.h; keep the two equal).
+ * A root is a guest CR3 with the PCID (bits 0-11), PTI's user/kernel bit (12) and the
+ * no-flush bit (63) cleared, so both PTI roots of one process are the same process.
+ */
+#define VM_PROC_MAX         16
+#define VM_PROC_MAX_VMS     8
+#define VM_PROC_ASID_BASE   2048
+#define VM_PROC_ROOT_MASK   (~(0x1FFFUL | (1UL << 63)))
 
 #endif /* TYPES_H */

@@ -1172,6 +1172,18 @@ cos_vm_vmcb_alloc(struct cos_compinfo *ci, vm_vmcscap_t vmcs_cap, vm_msrbitmapca
 
 }
 
+int
+cos_vm_proc_register(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root)
+{
+	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_REGISTER, vm_comp, proc_comp, root, 0);
+}
+
+int
+cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long root)
+{
+	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_UNREGISTER, vm_comp, root, 0, 0);
+}
+
 thdcap_t
 cos_initthd_alloc(struct cos_compinfo *ci, compcap_t comp)
 {

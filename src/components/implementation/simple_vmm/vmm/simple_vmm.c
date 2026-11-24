@@ -153,6 +153,29 @@ vm_comp_create(void)
 	return vm;
 }
 
+/*
+ * w11 step 1.2: the process-table operations, once at boot. The VM component stands in for
+ * a process component (it is on the VM's page table by definition); the root is made up.
+ * A second register finding the root (-EEXIST) and a second unregister missing it
+ * (-ENOENT) are the lookups. The table is empty again afterwards.
+ */
+static void
+vm_proc_unit_check(void)
+{
+	const word_t root = 0x123456000UL;
+	int reg, dup, bad, unreg, unreg2;
+
+	reg    = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root);
+	dup    = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root);
+	bad    = capmgr_vm_proc_register(g_vm->comp_id, g_vm->comp_id, root | 1);
+	unreg  = capmgr_vm_proc_unregister(g_vm->comp_id, root);
+	unreg2 = capmgr_vm_proc_unregister(g_vm->comp_id, root);
+
+	printc("VMM: proc table unit check: register %d, again %d, unmasked root %d, unregister %d, again %d: %s\n",
+	       reg, dup, bad, unreg, unreg2,
+	       (reg == 0 && dup == -EEXIST && bad == -EINVAL && unreg == 0 && unreg2 == -ENOENT) ? "PASS" : "FAIL");
+}
+
 /* Weak usage of nicmgr interface */
 void __attribute__((weak)) nic_netio_shmem_map(cbuf_t shm_id);
 
@@ -188,6 +211,8 @@ cos_init(void)
 			       VM_IPC_SINV_CAP_BASE + 4);
 		}
 	}
+
+	vm_proc_unit_check();
 
 	if (nic_netio_shmem_map) {
 		/* Create TX thread for transmitting packets to NIC */

@@ -164,6 +164,9 @@ capid_t cos_vm_lapic_alloc(struct cos_compinfo *ci, vaddr_t kmem);
 capid_t cos_vm_shared_region_alloc(struct cos_compinfo *ci, vaddr_t kmem);
 capid_t cos_vm_lapic_access_alloc(struct cos_compinfo *ci, vaddr_t kmem);
 capid_t cos_vm_vmcb_alloc(struct cos_compinfo *ci, vm_vmcscap_t vmcs_cap, vm_msrbitmapcap_t msr_bitmap_cap, vm_lapicaccesscap_t lapic_access_cap, vm_lapiccap_t lapic_cap, vm_shared_mem_t shared_mem_cap, thdcap_t handler_cap, word_t vpid);
+/* w11: bind a guest page-table root to a process component of the VM, and unbind it (kernel/include/vm_proc.h) */
+int cos_vm_proc_register(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root);
+int cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long root);
 
 void *cos_page_bump_alloc(struct cos_compinfo *ci);
 void *cos_page_bump_allocn(struct cos_compinfo *ci, size_t sz);
