@@ -148,6 +148,11 @@
 #if defined(__x86_64__)
 
 #define CONFIG_VMX 1
+/*
+ * w11 Phase 4: VMCALL_GATE_INTR's predicate (A51) is sound only while this is 0. With posted
+ * interrupts, posted-interrupt processing delivers a guest interrupt without a VM exit, so a thread
+ * could be interrupted inside its gate at an entry the VMM never sees (REPORT.md, Phase 4 facts).
+ */
 #define VMX_SUPPORT_POSTED_INTR 0
 /*
  * w11_vmcall_identity. VMCALL_IDENTITY: the vmcall fast path takes the capability table of the
