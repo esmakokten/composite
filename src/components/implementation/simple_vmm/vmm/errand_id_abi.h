@@ -59,6 +59,7 @@
 #define ERRAND_ID_IOC_T5            0xE1D0000BUL /* arg: struct errand_id_t5 *: return to user mode there */
 #define ERRAND_ID_IOC_T6            0xE1D0000CUL /* write one byte to the gate page through the direct map */
 #define ERRAND_ID_IOC_T11           0xE1D0000DUL /* arg: struct errand_id_t11 *: arm (mode != 0) or disarm (0) */
+#define ERRAND_ID_IOC_T12           0xE1D0000EUL /* set the trap flag in the caller's frame; the marker at the gate's vmcall */
 
 /* T2's ring-0 attempts: `count` vmcalls from the module with rax = `rax`. */
 struct errand_id_kvmcall {
