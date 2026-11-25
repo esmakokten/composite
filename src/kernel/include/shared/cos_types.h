@@ -684,6 +684,8 @@ struct vm_hb_ctr {
 	/* written by the VMM (simple_vmm, vmrt) */
 	u64_t reg_ok, reg_fail, unreg_ok, unreg_fail, ring0_refused; /* its vmcall_handler */
 	u64_t vmm_handled;  /* exits its handler loop has finished */
+	/* written by the VMM's page-table lock (VMCALL_PT_LOCK, pt_lock.c) */
+	u64_t pl_locked, pl_revoked, pl_viol_hw, pl_viol_sw;
 };
 #define VM_HB_CTR(sr) ((struct vm_hb_ctr *)((char *)(sr) + VM_HB_CTR_OFFSET))
 #endif

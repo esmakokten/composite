@@ -214,7 +214,20 @@ vmcall_handler(struct vmrt_vm_vcpu *vcpu)
 	case ERRAND_ID_OP_UNREGISTER:
 		ret = capmgr_vm_proc_unregister(g_vm->comp_id, regs->bx);
 		if (ret) vm_id_ctr.unreg_fail++; else vm_id_ctr.unreg_ok++;
+#if VMCALL_PT_LOCK
+		if (!ret) pt_lock_unregistered(vcpu, regs->bx); /* unregister, then unlock */
+#endif
 		break;
+#if VMCALL_PT_LOCK
+	case ERRAND_ID_OP_REGISTER_LOCKED:
+		ret = pt_lock_register(vcpu, regs->bx, regs->cx, regs->dx);
+		if (ret) vm_id_ctr.reg_fail++; else vm_id_ctr.reg_ok++;
+		break;
+	case ERRAND_ID_OP_DUMP:
+		pt_lock_dump();
+		ret = 0;
+		break;
+#endif
 	case ERRAND_ID_OP_COUNTERS:
 		vm_id_ctr.counters++;
 		printc("VMM: identity counters: register ok %lu fail %lu, unregister ok %lu fail %lu, "
@@ -282,9 +295,6 @@ cos_init(void)
 	}
 
 	vm_proc_unit_check();
-#if VMCALL_PT_LOCK
-	pt_lock_init(g_vm->comp_id); /* before any vCPU runs */
-#endif
 
 	/* Slots 0 and 1, as installed above; the copies carry the VMM's token (DECISIONS Q6). */
 	g_vm_proc = capmgr_vm_proc_create(g_vm->comp_id, 0x3);
@@ -294,6 +304,9 @@ cos_init(void)
 	} else {
 		printc("VMM: WARNING: process component creation failed\n");
 	}
+#if VMCALL_PT_LOCK
+	pt_lock_init(g_vm->comp_id, g_vm_proc); /* before any vCPU runs */
+#endif
 
 	if (nic_netio_shmem_map) {
 		/* Create TX thread for transmitting packets to NIC */

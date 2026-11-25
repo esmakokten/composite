@@ -171,6 +171,8 @@
  * table a write (DECISIONS A10). 0 = the old behaviour.
  */
 #define VMCALL_PT_LOCK 0
+/* w11 Phase 2, T3 arm B: a violation unlocks only that page and keeps the registration (VMM only) */
+#define VMCALL_PT_LOCK_COUNT_ONLY 0
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4

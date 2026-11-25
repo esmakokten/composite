@@ -475,11 +475,12 @@ vm_hb_tick(int src)
 	k = VM_HB_CTR(vm_hb_sr);
 	t = thd_current(cos_cpu_local_info());
 	printk("HB %lu reg %lu/%lu unreg %lu/%lu r0 %lu fast ok %lu miss %lu bad %lu slow %lu vmm %lu "
-	       "last %lu rip %lx cr3 %lx via %s thd %lu\n",
+	       "lock %lu rev %lu vhw %lu vsw %lu last %lu rip %lx cr3 %lx via %s thd %lu\n",
 	       vm_hb_sec, (unsigned long)k->reg_ok, (unsigned long)k->reg_fail, (unsigned long)k->unreg_ok,
 	       (unsigned long)k->unreg_fail, (unsigned long)k->ring0_refused, (unsigned long)k->fast_hits,
 	       (unsigned long)k->fast_misses, (unsigned long)k->fast_badslot, (unsigned long)k->slow_exits,
-	       (unsigned long)k->vmm_handled, (unsigned long)vm_hb_sr->reason, (unsigned long)vm_hb_sr->ip,
+	       (unsigned long)k->vmm_handled, (unsigned long)k->pl_locked, (unsigned long)k->pl_revoked,
+	       (unsigned long)k->pl_viol_hw, (unsigned long)k->pl_viol_sw, (unsigned long)vm_hb_sr->reason, (unsigned long)vm_hb_sr->ip,
 	       (unsigned long)vm_hb_sr->cr3, src == 2 ? "exit" : (src ? "vmtimer" : "host"), t ? (unsigned long)t->tid : 0UL);
 }
 #endif
