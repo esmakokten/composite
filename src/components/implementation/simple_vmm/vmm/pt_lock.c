@@ -45,6 +45,7 @@ struct pl_proc {
 };
 
 static struct pl_proc pl_procs[PL_PROCS];
+static int            pl_kernel_user = -1; /* A31: kernel-half PGD entries with the user bit, at the first walk */
 static compid_t       pl_vm, pl_proc_comp;
 static compid_t       pl_comps[3]; /* Phase 3 (A36): process components by registration index */
 static struct vmrt_vm_comp *pl_vmc; /* the VM, for GPA2HVA outside a vCPU's context */
@@ -166,9 +167,10 @@ pl_walk(struct vmrt_vm_vcpu *vcpu, struct pl_proc *p, unsigned long root, unsign
 	int            i, ku = 0;
 
 	if (!reported) {
+		/* counted at the first walk, printed by the dump (a serial line here is ~8 ms of registration) */
 		reported = 1;
 		for (i = 256; i < 512; i++) if ((pgd[i] & (PL_PTE_P | PL_PTE_U)) == (PL_PTE_P | PL_PTE_U)) ku++;
-		printc("VMM: pt_lock walk: %d kernel-half PGD entries have the user bit set (information)\n", ku);
+		pl_kernel_user = ku;
 	}
 	return pl_walk_table(vcpu, p, root, 4, 0, 255, miss, why);
 }
@@ -478,6 +480,9 @@ pt_lock_dump(void)
 	       "pages locked now %lu; violations hw %lu sw %lu no-linear %lu; count-only unlocks %lu%s\n",
 	       pl.reg_ok, pl.gates, pl.reg_fail, pl.walk_refused, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
 	       pl.viol_nolin, pl.count_only_unlocks, VMCALL_PT_LOCK_COUNT_ONLY ? " (count-only mode)" : "");
+	if (pl_kernel_user >= 0)
+		printc("VMM: pt_lock walk: %d kernel-half PGD entries had the user bit set at the first walk (information)\n",
+		       pl_kernel_user);
 	if (pl.gates)
 		printc("VMM: pt_lock: last gate: root %lx at %lx (page %lx), vmcall at %lx, component %lu\n", pl.last_root,
 		       pl.last_gate, pl.last_gpa, pl.last_gate + ERRAND_ID_GATE_VMCALL_OFF, pl.last_comp);
