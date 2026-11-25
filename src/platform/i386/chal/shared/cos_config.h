@@ -181,6 +181,14 @@
  * (vmx_resume). 0 = the old behaviour.
  */
 #define VM_GUEST_TICK 0
+/*
+ * w11 Phase 3. VMCALL_GATE: a vmcall is served only when GUEST_RIP is the one vmcall instruction of
+ * the process's gate page, whose bytes the VMM wrote (DECISIONS A32, A33). 0 = the old behaviour.
+ */
+#define VMCALL_GATE 0
+#if VMCALL_GATE && !(VMCALL_IDENTITY && VMCALL_RESUME_RIP3)
+#error "VMCALL_GATE needs VMCALL_IDENTITY and VMCALL_RESUME_RIP3"
+#endif
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4
