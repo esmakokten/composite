@@ -157,6 +157,13 @@
  */
 #define VMCALL_IDENTITY 0
 #define VMCALL_RESUME_RIP3 0
+/*
+ * w11 Q10. VMM_HEARTBEAT: counters in the vCPU's shared page (the kernel's fast-path accepted,
+ * refused, bad slot, slow exits; the VMM's registration counts and handled exits) and a kernel
+ * printk of them at most once per second, from the host timer interrupt and every slow exit,
+ * never the fast path (vm_hb_tick, vmx_exit.c). A diagnostic for the soak; 0 = the old behaviour.
+ */
+#define VMM_HEARTBEAT 0
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4

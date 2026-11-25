@@ -89,6 +89,9 @@ volatile int apicids[NUM_CPU];
 #define LAPIC_TSCDEADLINE_THRESH 0
 
 extern int timer_process(struct pt_regs *regs);
+#if VMM_HEARTBEAT
+extern void vm_hb_tick(int src);
+#endif
 
 enum lapic_timer_type
 {
@@ -479,6 +482,9 @@ lapic_timer_handler(struct pt_regs *regs)
 	int preempt = 1;
 
 	lapic_ack();
+#if VMM_HEARTBEAT
+	vm_hb_tick(0); /* w11 Q10, vmx_exit.c */
+#endif
 
 	preempt = timer_process(regs);
 

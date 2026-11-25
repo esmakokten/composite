@@ -666,6 +666,26 @@ struct vm_vcpu_shared_region {
 	struct vm_pi_desc pi_desc __attribute__((aligned(CACHE_LINE))); /* posted interrupt support, which is essentially an interface to record interrupt vectors */
 };
 
+#if VMM_HEARTBEAT
+/*
+ * w11 Q10: the counters the kernel's heartbeat prints (vm_hb_tick, vmx_exit.c). They sit at a fixed offset past the end
+ * of struct vm_vcpu_shared_region, in the same page, because vmx_exit_handler copies the whole
+ * struct from its stack frame on every slow exit and would overwrite anything inside it.
+ */
+#define VM_HB_CTR_OFFSET 3840
+struct vm_hb_ctr {
+	/* written by the kernel */
+	u64_t fast_hits;    /* fast-path vmcalls accepted (VMCALL_IDENTITY) */
+	u64_t fast_misses;  /* refused: root not registered */
+	u64_t fast_badslot; /* refused: registered, slot empty */
+	u64_t slow_exits;   /* every vmx_exit_handler entry */
+	/* written by the VMM (simple_vmm, vmrt) */
+	u64_t reg_ok, reg_fail, unreg_ok, unreg_fail, ring0_refused; /* its vmcall_handler */
+	u64_t vmm_handled;  /* exits its handler loop has finished */
+};
+#define VM_HB_CTR(sr) ((struct vm_hb_ctr *)((char *)(sr) + VM_HB_CTR_OFFSET))
+#endif
+
 enum {
 	PAGE_VMCS,
 	PAGE_LAPIC,

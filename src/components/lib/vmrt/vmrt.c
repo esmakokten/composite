@@ -492,6 +492,9 @@ vmrt_vm_exception_handler(void *_vcpu)
 		reason = shared_region->reason;
 
 		vmrt_handle_reason(vcpu, reason);
+#if VMM_HEARTBEAT
+		VM_HB_CTR(shared_region)->vmm_handled++; /* w11 Q10: read by the kernel's heartbeat */
+#endif
 		rdtscll(curr_tsc);
 		if (curr_tsc >= vcpu->next_timer) {
 #if VMX_SUPPORT_POSTED_INTR

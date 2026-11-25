@@ -229,6 +229,18 @@ vmcall_handler(struct vmrt_vm_vcpu *vcpu)
 		break;
 	}
 	regs->ax = (u64_t)ret;
+#if VMM_HEARTBEAT
+	{
+		/* w11 Q10: mirrored where the kernel's heartbeat can read them (VM_HB_CTR). */
+		struct vm_hb_ctr *k = VM_HB_CTR(regs);
+
+		k->reg_ok        = vm_id_ctr.reg_ok;
+		k->reg_fail      = vm_id_ctr.reg_fail;
+		k->unreg_ok      = vm_id_ctr.unreg_ok;
+		k->unreg_fail    = vm_id_ctr.unreg_fail;
+		k->ring0_refused = vm_id_ctr.refused;
+	}
+#endif
 	GOTO_NEXT_INST(regs);
 }
 

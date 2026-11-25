@@ -342,14 +342,23 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 		pci = likely(pt) ? vm_proc_lkup(pt, root) : NULL;
 		if (unlikely(!pci)) {
 			vmcall_id_misses++;
+#if VMM_HEARTBEAT
+			VM_HB_CTR(thd_curr->vm_vcpu_shared_region)->fast_misses++;
+#endif
 			goto refuse;
 		}
 		sinvc = (struct cap_sinv *)captbl_lkup(pci->captbl, cap);
 		if (unlikely(!sinvc || sinvc->h.type != CAP_SINV)) {
 			vmcall_id_badslot++;
+#if VMM_HEARTBEAT
+			VM_HB_CTR(thd_curr->vm_vcpu_shared_region)->fast_badslot++;
+#endif
 			goto refuse;
 		}
 		vmcall_id_hits++;
+#if VMM_HEARTBEAT
+		VM_HB_CTR(thd_curr->vm_vcpu_shared_region)->fast_hits++;
+#endif
 	}
 	/* Only now: a refused call must leave the vCPU RUNNING (vmx_resume asserts it). */
 	thd_curr->vcpu_ctx.state = VM_THD_STATE_VMCALL_FAST;
@@ -436,6 +445,45 @@ refuse:
 #endif
 }
 
+#if VMM_HEARTBEAT
+/*
+ * w11 Q10: the heartbeat. At most one printk per second, from every place the kernel runs on
+ * this core except the fast path (invariant 1): the native LAPIC timer handler (lapic.c, "host"),
+ * the timer case of the slow exit ("vmtimer"), and every slow exit ("exit"). It needs no
+ * user-level thread to run. The host timer here is one-shot, armed only when the scheduler asks
+ * (measured in QEMU: no timer for 8 s while the guest was busy), so neither source alone is
+ * periodic; together, a missing line means no host timer and no slow exit for a second (and so
+ * no guest timer injection either, which happens only at a slow-path entry).
+ */
+static struct vm_vcpu_shared_region *vm_hb_sr; /* the vCPU's page, set by its first slow exit */
+static u64_t                          vm_hb_last;
+static unsigned long                  vm_hb_sec;
+extern int                            chal_cyc_usec(void);
+
+void
+vm_hb_tick(int src)
+{
+	struct vm_hb_ctr *k;
+	struct thread    *t;
+	u64_t             now, per_sec = (u64_t)chal_cyc_usec() * 1000000;
+
+	if (!vm_hb_sr || !per_sec) return;
+	rdtscll(now);
+	if (now - vm_hb_last < per_sec) return;
+	vm_hb_last = now;
+	vm_hb_sec++;
+	k = VM_HB_CTR(vm_hb_sr);
+	t = thd_current(cos_cpu_local_info());
+	printk("HB %lu reg %lu/%lu unreg %lu/%lu r0 %lu fast ok %lu miss %lu bad %lu slow %lu vmm %lu "
+	       "last %lu rip %lx cr3 %lx via %s thd %lu\n",
+	       vm_hb_sec, (unsigned long)k->reg_ok, (unsigned long)k->reg_fail, (unsigned long)k->unreg_ok,
+	       (unsigned long)k->unreg_fail, (unsigned long)k->ring0_refused, (unsigned long)k->fast_hits,
+	       (unsigned long)k->fast_misses, (unsigned long)k->fast_badslot, (unsigned long)k->slow_exits,
+	       (unsigned long)k->vmm_handled, (unsigned long)vm_hb_sr->reason, (unsigned long)vm_hb_sr->ip,
+	       (unsigned long)vm_hb_sr->cr3, src == 2 ? "exit" : (src ? "vmtimer" : "host"), t ? (unsigned long)t->tid : 0UL);
+}
+#endif
+
 void
 vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 {
@@ -505,6 +553,13 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	inst_info = vmread(EXIT_INSTRUCTION_INFORMATION);
 
 	shared_region = thd_curr->vm_vcpu_shared_region;
+#if VMM_HEARTBEAT
+	/* The counters must lie past the struct the memcpy below overwrites. */
+	{ typedef char vm_hb_fits[(sizeof(struct vm_vcpu_shared_region) <= VM_HB_CTR_OFFSET) ? 1 : -1]; }
+	VM_HB_CTR(shared_region)->slow_exits++;
+	vm_hb_sr = shared_region;
+	vm_hb_tick(2);
+#endif
 
 	/* Share GPs with VMM */
 	memcpy(shared_region, regs, sizeof(struct vm_vcpu_shared_region));
@@ -540,6 +595,9 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 		/* Dispatch based on the actual interrupt vector */
 		switch (vector) {
 		case HW_LAPIC_TIMER:
+#if VMM_HEARTBEAT
+			vm_hb_tick(1);
+#endif
 			/*FIXME: might need a xsave/xrestore for sse/avx for current vcpu thd because current thd is set to be exception handler */
 			copy_gp_regs(&thd_exception_handler->regs, &tmp_regs[cpuid]);
 			ret = timer_process(&tmp_regs[cpuid], thd_exception_handler);
