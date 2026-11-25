@@ -39,4 +39,11 @@ unsigned long COS_STUB_DECL(memmgr_shared_page_map_aligned)(cbuf_t id, unsigned 
 unsigned long memmgr_shared_page_map_aligned_in_vm(cbuf_t id, unsigned long align, vaddr_t *pgaddr, compid_t cid);
 unsigned long COS_STUB_DECL(memmgr_shared_page_map_aligned_in_vm)(cbuf_t id, unsigned long align, vaddr_t *pgaddr, compid_t cid);
 
+/*
+ * w11 Phase 2: give `npages` guest pages from guest-physical `gpa` the EPT permissions `perm`
+ * (VM_EPT_PERM_*) in VM `cid`, and invalidate. Only the VM's VMM may call it. 0 or -errno; the
+ * kernel operation exists only under VMCALL_PT_LOCK.
+ */
+int           memmgr_vm_page_perm(compid_t cid, unsigned long gpa, unsigned long npages, unsigned long perm);
+
 #endif /* MEMMGR_H */

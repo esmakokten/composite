@@ -66,6 +66,12 @@ struct mm_span {
 };
 
 SS_STATIC_SLAB(comp, struct cm_comp, MAX_NUM_COMPS);
+
+/* w11 Phase 2: each VM's guest-memory span in its EPT (memmgr_vm_page_perm) */
+static struct {
+	vaddr_t       base;
+	unsigned long npages;
+} vm_ept_span[MAX_NUM_COMPS];
 SS_STATIC_SLAB(thd, struct cm_thd, MAX_NUM_THREADS);
 /* These size values are somewhat arbitrarily chosen */
 SS_STATIC_SLAB(rcv, struct cm_rcv, MAX_NUM_THREADS);
@@ -568,8 +574,47 @@ memmgr_shared_page_map_aligned_in_vm(cbuf_t id, unsigned long align, vaddr_t *pg
 		if (*pgaddr == 0) *pgaddr = addr;
 		align = PAGE_SIZE_4K;
 	}
+	/* w11 Phase 2: the first span mapped into a VM is its guest memory, from guest-physical 4 KiB up */
+	if (cid < MAX_NUM_COMPS && !vm_ept_span[cid].base) {
+		vm_ept_span[cid].base   = *pgaddr;
+		vm_ept_span[cid].npages = s->n_pages;
+	}
 
 	return s->n_pages;
+}
+
+/*
+ * w11 Phase 2: EPT permissions for guest pages. The EPT address of guest-physical `gpa` is the
+ * guest-memory span's first alias + (gpa - 4 KiB): the VMM maps guest memory as one span, one
+ * 4 KiB alias per page, from guest-physical 4 KiB upward (simple_vmm.c, vm_comp_create; the
+ * kernel learns the same base, chal_pgtbl.c). Same caller check as the call above.
+ */
+int
+memmgr_vm_page_perm(compid_t cid, unsigned long gpa, unsigned long npages, unsigned long perm)
+{
+	struct cm_comp      *c;
+	struct cos_compinfo *vm_ci;
+	compid_t             vmm = (compid_t)cos_inv_token();
+	unsigned long        first, i;
+	int                  ret;
+
+	if (cid >= MAX_NUM_COMPS) return -EINVAL;
+	c = ss_comp_get(cid);
+	if (!c) return -EINVAL;
+	/* Only the vmm of this VM is allowed to call this interface */
+	assert(vmm == c->comp.vm_comp_info.vmm_comp_id);
+
+	if (!vm_ept_span[cid].base || (gpa & (PAGE_SIZE_4K - 1)) || gpa < PAGE_SIZE_4K) return -EINVAL;
+	first = (gpa - PAGE_SIZE_4K) / PAGE_SIZE_4K;
+	if (npages == 0 || first + npages < first || first + npages > vm_ept_span[cid].npages) return -EINVAL;
+
+	vm_ci = cos_compinfo_get(c->comp.comp_res);
+	for (i = 0; i < npages; i++) {
+		ret = cos_ept_leaf_perm(vm_ci->pgtbl_cap, vm_ept_span[cid].base + (first + i) * PAGE_SIZE_4K, perm);
+		if (ret) return ret;
+	}
+
+	return 0;
 }
 
 /*

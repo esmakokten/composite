@@ -11,6 +11,7 @@
 #include <capmgr.h>
 #include <pong.h>
 #include "errand_id_abi.h"
+#include "pt_lock.h"
 #include <contigmem.h>
 #include <shm_bm.h>
 #include <vmrt.h>
@@ -281,6 +282,9 @@ cos_init(void)
 	}
 
 	vm_proc_unit_check();
+#if VMCALL_PT_LOCK
+	pt_lock_init(g_vm->comp_id); /* before any vCPU runs */
+#endif
 
 	/* Slots 0 and 1, as installed above; the copies carry the VMM's token (DECISIONS Q6). */
 	g_vm_proc = capmgr_vm_proc_create(g_vm->comp_id, 0x3);

@@ -2,6 +2,7 @@
 #include <instr_emul.h>
 #include <acrn_common.h>
 #include <vioapic.h>
+#include "pt_lock.h"
 
 void 
 ept_violation_handler(struct vmrt_vm_vcpu *vcpu)
@@ -11,6 +12,10 @@ ept_violation_handler(struct vmrt_vm_vcpu *vcpu)
 	u64_t gpa;
 	struct acrn_mmio_request *mmio_req = vcpu->mmio_request;
 
+#if VMCALL_PT_LOCK
+	/* w11 Phase 2: a write to a page the VMM locked; handled there, RIP not advanced */
+	if (pt_lock_ept_violation(vcpu)) return;
+#endif
 	gpa = regs->gpa;
 
 	/* Specify if read or write operation */
