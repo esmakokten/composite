@@ -19,6 +19,9 @@
 #include "include/ulk.h"
 #include "include/vm.h"
 #include "include/vm_proc.h"
+#if VMCALL_PT_LOCK
+int vmx_ept_invalidate(unsigned long ept_root); /* platform/x86_64/vmx/vmx.c */
+#endif
 
 /* w11: one process table per VM, indexed by the VM component's ASID (vm_proc.h). */
 struct vm_proc_tbl vm_proc_tbls[VM_PROC_MAX_VMS];
@@ -1644,6 +1647,20 @@ static sword_t __attribute__((noinline)) composite_syscall_slowpath(struct pt_re
 
 			break;
 		}
+#if VMCALL_PT_LOCK
+		case CAPTBL_OP_EPT_LEAF_PERM: {
+			/* w11 Phase 2: one EPT leaf's permissions (VM_EPT_PERM_*), then INVEPT */
+			struct cap_pgtbl *ptc  = (struct cap_pgtbl *)ch;
+			vaddr_t           addr = __userregs_get1(regs);
+			unsigned long     perm = __userregs_get2(regs);
+
+			if (ptc->type != PGTBL_TYPE_EPT || ptc->lvl) cos_throw(err, -EINVAL);
+			ret = chal_pgtbl_ept_leaf_perm(ptc->pgtbl, addr, perm);
+			if (!ret) ret = vmx_ept_invalidate((unsigned long)ptc->pgtbl);
+
+			break;
+		}
+#endif
 		case CAPTBL_OP_MEMDEACTIVATE: {
 			vaddr_t      addr = __userregs_get1(regs);
 			livenessid_t lid  = __userregs_get2(regs);

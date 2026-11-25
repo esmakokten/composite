@@ -167,6 +167,8 @@ capid_t cos_vm_vmcb_alloc(struct cos_compinfo *ci, vm_vmcscap_t vmcs_cap, vm_msr
 /* w11: bind a guest page-table root to a process component of the VM, and unbind it (kernel/include/vm_proc.h) */
 int cos_vm_proc_register(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root);
 int cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long root);
+/* w11 Phase 2: one EPT leaf's permissions (VM_EPT_PERM_*), with INVEPT; needs VMCALL_PT_LOCK */
+int cos_ept_leaf_perm(pgtblcap_t ept, vaddr_t addr, unsigned long perm);
 
 void *cos_page_bump_alloc(struct cos_compinfo *ci);
 void *cos_page_bump_allocn(struct cos_compinfo *ci, size_t sz);

@@ -119,6 +119,9 @@ int            chal_pgtbl_mapping_add(pgtbl_t pt, vaddr_t addr, paddr_t page, wo
 int            chal_pgtbl_cosframe_add(pgtbl_t pt, vaddr_t addr, paddr_t page, word_t flags, u32_t order);
 /* This function updates flags of an existing mapping. */
 int            chal_pgtbl_mapping_mod(pgtbl_t pt, vaddr_t addr, u32_t flags, u32_t *prevflags);
+#if VMCALL_PT_LOCK
+int            chal_pgtbl_ept_leaf_perm(pgtbl_t pt, vaddr_t addr, unsigned long perm);
+#endif
 int            chal_pgtbl_mapping_del(pgtbl_t pt, vaddr_t addr, u32_t liv_id);
 int            chal_pgtbl_mapping_del_direct(pgtbl_t pt, u32_t addr);
 int            chal_pgtbl_mapping_scan(struct cap_pgtbl *pt);

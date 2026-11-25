@@ -429,6 +429,41 @@ chal_pgtbl_cosframe_add(pgtbl_t pt, vaddr_t addr, paddr_t page, word_t flags, u3
 	return __pgtbl_update_leaf(pte, (void *)(page | flags), 0);
 }
 
+#if VMCALL_PT_LOCK
+/*
+ * w11 Phase 2: give one EPT leaf the permissions `perm` (VM_EPT_PERM_*), keeping its frame and every
+ * other bit (memory type, ignore-PAT, accessed, dirty). 64-bit throughout, unlike
+ * chal_pgtbl_mapping_mod below, which holds the entry in 32 bits and cannot handle a frame at or
+ * above 4 GiB. Refuses a non-present leaf. The caller invalidates the EPT's cached translations.
+ */
+int
+chal_pgtbl_ept_leaf_perm(pgtbl_t pt, vaddr_t addr, unsigned long perm)
+{
+	const unsigned long rwx = x86_EPT_READ_ACCESS | x86_EPT_WRITE_ACCCESS | x86_EPT_INST_FETCHABLE
+	                          | x86_EPT_USR_INST_FETCHABLE;
+	struct ert_intern  *pte;
+	unsigned long       orig_v, new_v, bits, accum = 0;
+
+	switch (perm) {
+	case VM_EPT_PERM_RO:  bits = x86_EPT_READ_ACCESS; break;
+	case VM_EPT_PERM_RX:  bits = x86_EPT_READ_ACCESS | x86_EPT_INST_FETCHABLE | x86_EPT_USR_INST_FETCHABLE; break;
+	case VM_EPT_PERM_DEF: bits = rwx; break;
+	default:              return -EINVAL;
+	}
+	if (unlikely(!pt || (addr & PGTBL_FLAG_MASK))) return -EINVAL;
+
+	pte = (struct ert_intern *)__pgtbl_lkupan((pgtbl_t)((unsigned long)pt | X86_PGTBL_PRESENT),
+	                                          addr >> PGTBL_PAGEIDX_SHIFT, PGTBL_DEPTH, &accum);
+	if (!pte || __pgtbl_isnull(pte, 0, 0)) return -ENOENT;
+
+	orig_v = (unsigned long)pte->next;
+	new_v  = (orig_v & ~rwx) | bits;
+	if (new_v == orig_v) return 0;
+
+	return __pgtbl_update_leaf(pte, (void *)new_v, orig_v);
+}
+#endif
+
 /* This function updates flags of an existing mapping. */
 int
 chal_pgtbl_mapping_mod(pgtbl_t pt, vaddr_t addr, u32_t flags, u32_t *prevflags)

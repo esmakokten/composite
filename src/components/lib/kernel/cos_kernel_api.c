@@ -1184,6 +1184,12 @@ cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long
 	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_UNREGISTER, vm_comp, root, 0, 0);
 }
 
+int
+cos_ept_leaf_perm(pgtblcap_t ept, vaddr_t addr, unsigned long perm)
+{
+	return call_cap_op(ept, CAPTBL_OP_EPT_LEAF_PERM, addr, perm, 0, 0);
+}
+
 thdcap_t
 cos_initthd_alloc(struct cos_compinfo *ci, compcap_t comp)
 {

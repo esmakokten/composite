@@ -398,6 +398,37 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 	vmwrite(POSTED_INTERRUPT_DESCRIPTOR, chal_va2pa(&((struct vm_vcpu_shared_region *)shared_region)->pi_desc));
 }
 
+#if VMCALL_PT_LOCK
+/*
+ * w11 Phase 2: drop every cached translation derived from the EPT whose root is at physical
+ * `ept_root` (all VPIDs). Single-context when the CPU supports it, else all-context. Runs on the
+ * calling core only, which is the whole job while the VM has one vCPU on the VMM's core
+ * (NUM_CPU 1, REPORT.md "Phase 2 facts"). Returns -EPERM when INVEPT is not available (no ENOSYS here).
+ */
+int
+vmx_ept_invalidate(unsigned long ept_root)
+{
+	struct {
+		u64_t eptp, rsvd;
+	} desc;
+	u64_t         cap = msr_get(IA32_VMX_EPT_VPID_CAP);
+	unsigned long type;
+	u8_t          fail;
+
+	if (!(cap & (1ULL << 20))) return -EPERM; /* INVEPT */
+	if (cap & (1ULL << 25))      type = 1;     /* single-context */
+	else if (cap & (1ULL << 26)) type = 2;     /* all-context */
+	else                         return -EPERM;
+
+	/* The same pointer vmx_thd_init builds: write-back, 4-level, no A/D under the lock. */
+	desc.eptp = (ept_root & ~0xFFFUL) | 6 | ((4 - 1) << 3);
+	desc.rsvd = 0;
+	__asm__ volatile("invept %1, %2; setna %0" : "=qm"(fail) : "m"(desc), "r"(type) : "cc", "memory");
+
+	return fail ? -EINVAL : 0;
+}
+#endif
+
 static void
 vmx_launch(void)
 {

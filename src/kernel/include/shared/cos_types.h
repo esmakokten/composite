@@ -178,6 +178,8 @@ typedef enum {
 	/* w11: bind a guest process (page-table root) to a process component, and unbind it */
 	CAPTBL_OP_VM_PROC_REGISTER,
 	CAPTBL_OP_VM_PROC_UNREGISTER,
+	/* w11 Phase 2: change one EPT leaf's permissions and invalidate (VMCALL_PT_LOCK) */
+	CAPTBL_OP_EPT_LEAF_PERM,
 
 } syscall_op_t;
 
@@ -730,5 +732,10 @@ enum {
 #define VM_PROC_MAX_VMS     8
 #define VM_PROC_ASID_BASE   2048
 #define VM_PROC_ROOT_MASK   (~(0xFFFUL | (1UL << 63)))
+
+/* w11 Phase 2: the permissions CAPTBL_OP_EPT_LEAF_PERM can give one EPT leaf */
+#define VM_EPT_PERM_RO  1 /* read only: a locked page-table page */
+#define VM_EPT_PERM_RX  2 /* read and fetch */
+#define VM_EPT_PERM_DEF 3 /* the default: read, write, fetch */
 
 #endif /* TYPES_H */
