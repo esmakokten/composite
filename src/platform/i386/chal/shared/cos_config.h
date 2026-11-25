@@ -212,6 +212,16 @@
 #if (VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY) && !VMCALL_GATE
 #error "VMCALL_GATE_INTR needs VMCALL_GATE"
 #endif
+/*
+ * w11 Phase 6. VMCALL_SELF_REG: a process registers itself from ring 3 with a cpuid leaf
+ * (ERRAND_ID_CPUID_LEAF); the VMM takes the root from the exit's CR3, walks, pre-sets and locks the
+ * tables itself and maps a frame it owns as the gate (DECISIONS A71 to A80). The ring-0 registration
+ * operations answer -ENOSYS. 0 = the old behaviour.
+ */
+#define VMCALL_SELF_REG 0
+#if VMCALL_SELF_REG && !(VMCALL_GATE && VMCALL_PT_LOCK)
+#error "VMCALL_SELF_REG needs VMCALL_GATE and VMCALL_PT_LOCK"
+#endif
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4

@@ -31,7 +31,24 @@
  */
 #define ERRAND_ID_OP_REGISTER_GATE   0xE106UL
 
+/*
+ * Phase 6 (VMCALL_SELF_REG, DECISIONS A71 to A80): the process registers itself, from ring 3, with
+ * a cpuid: eax = ERRAND_ID_CPUID_LEAF, ecx = an ERRAND_ID_SELF_* operation, rsi = the gate's address
+ * (one anonymous private page, read+exec, mapped and touched after mlockall), rdi = the component
+ * (as struct errand_id_gate_page's comp). The root is the CR3 of that exit, never an argument. The
+ * VMM walks, pre-sets and locks the tables itself and maps a frame it owns at rsi. Answer in eax: 0
+ * or a negative errno (32 bits); ebx, ecx, edx zero. Refused (-EPERM) unless the exit's privilege
+ * level is 3. SELF_DUMP grants nothing: the VMM prints its counters (an image without the module
+ * has no other way to ask). Under VMCALL_SELF_REG the ring-0 operations REGISTER, UNREGISTER,
+ * REGISTER_LOCKED and REGISTER_GATE answer -ENOSYS.
+ */
+#define ERRAND_ID_CPUID_LEAF      0x4E1D0001U
+#define ERRAND_ID_SELF_REGISTER   1U
+#define ERRAND_ID_SELF_UNREGISTER 2U
+#define ERRAND_ID_SELF_DUMP       3U
+
 /* Negative errnos in rax, Linux numbering (Composite's kernel uses the same for these). */
+#define ERRAND_ID_EPERM  1
 #define ERRAND_ID_ENOENT 2
 #define ERRAND_ID_ENOMEM 12
 #define ERRAND_ID_EEXIST 17
@@ -60,6 +77,16 @@
 #define ERRAND_ID_IOC_T6            0xE1D0000CUL /* write one byte to the gate page through the direct map */
 #define ERRAND_ID_IOC_T11           0xE1D0000DUL /* arg: struct errand_id_t11 *: arm (mode != 0) or disarm (0) */
 #define ERRAND_ID_IOC_T12           0xE1D0000EUL /* set the trap flag in the caller's frame; the marker at the gate's vmcall */
+/* Phase 6: the module as the attacker only (insmod errand_id.ko self_reg=1 removes its registration ioctls) */
+#define ERRAND_ID_IOC_GATE_VA     0xE1D0000FUL /* arg: the caller's gate address, where T11 and T12 look */
+#define ERRAND_ID_IOC_T6_VA       0xE1D00010UL /* arg: a user address; write one byte to the frame behind it (T6) */
+#define ERRAND_ID_IOC_CPUID_RING0 0xE1D00011UL /* arg: struct errand_id_cpuid *: the leaf from ring 0 (T16) */
+#define ERRAND_ID_IOC_T16_PMD     0xE1D00012UL /* arg: a 2 MiB-aligned user address with no table under it: map a read-only 2 MiB leaf there; arg | 1 removes it (T16) */
+
+struct errand_id_cpuid {
+	unsigned long op, gate_va, comp; /* in: ecx, rsi, rdi */
+	unsigned long eax;               /* out: the VMM's answer */
+};
 
 /* T2's ring-0 attempts: `count` vmcalls from the module with rax = `rax`. */
 struct errand_id_kvmcall {
