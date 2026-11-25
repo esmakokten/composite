@@ -16,13 +16,6 @@
 /* diag counters for the CR3 policy: expect one switch, then only skips */
 static unsigned long cr3pol_switches, cr3pol_skips, cr3pol_errands;
 
-#if VMCALL_IDENTITY
-/*
- * w11 identity counters: counted, never printed from the fast path (invariant 1). Racy
- * increments across vCPUs, like the CR3-policy counters above: diagnostics, not accounting.
- */
-static unsigned long vmcall_id_hits, vmcall_id_misses, vmcall_id_badslot;
-#endif
 
 void lapic_ack(void);
 void restore_from_vm(void);
@@ -340,7 +333,7 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 */
 	{
 		struct vm_proc_tbl *pt;
-		struct comp_info   *pci;
+		struct captbl      *pct;
 		unsigned long       root;
 
 		/*
@@ -349,31 +342,34 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 		 *
 		 * (b) The process: CR3 without the PCID and the no-flush bit (bit 12 is kept: A8). */
 		root = vmread(GUEST_CR3) & VM_PROC_ROOT_MASK;
-		/* (c) The VM's process table, found by the VM component's ASID. */
-		pt  = likely(curr_ci) ? vm_proc_tbl_get(curr_ci->pgtblinfo.protdom) : NULL;
+		/*
+		 * (c) The VM's process table (Phase 5, A62): the vCPU thread's own pointer, on the line
+		 * that holds vmcs.host_cr3. Not attached: every ring-3 vmcall is refused.
+		 */
+		pt = thd_curr->vcpu_ctx.proc_tbl;
 #if VMCALL_GATE
 		/* (d) A33: only the gate's one vmcall. The RIP read is the one RIP + 3 used to do below. */
 		gate_rip_now = vmread(GUEST_RIP);
-		pci = likely(pt) ? vm_proc_lkup_gate(pt, root, gate_rip_now) : NULL;
+		pct = likely(pt) ? vm_proc_lkup_gate(pt, root, gate_rip_now) : NULL;
 #else
-		pci = likely(pt) ? vm_proc_lkup(pt, root) : NULL;
+		pct = likely(pt) ? vm_proc_lkup(pt, root) : NULL;
 #endif
-		if (unlikely(!pci)) {
-			vmcall_id_misses++;
+		if (unlikely(!pct)) {
+			if (likely(pt)) pt->ctr.misses++;
 #if VMM_HEARTBEAT
 			VM_HB_CTR(thd_curr->vm_vcpu_shared_region)->fast_misses++;
 #endif
 			goto refuse;
 		}
-		sinvc = (struct cap_sinv *)captbl_lkup(pci->captbl, cap);
+		sinvc = (struct cap_sinv *)captbl_lkup(pct, cap);
 		if (unlikely(!sinvc || sinvc->h.type != CAP_SINV)) {
-			vmcall_id_badslot++;
+			pt->ctr.badslot++;
 #if VMM_HEARTBEAT
 			VM_HB_CTR(thd_curr->vm_vcpu_shared_region)->fast_badslot++;
 #endif
 			goto refuse;
 		}
-		vmcall_id_hits++;
+		pt->ctr.hits++;
 #if VMM_HEARTBEAT
 		VM_HB_CTR(thd_curr->vm_vcpu_shared_region)->fast_hits++;
 #endif
@@ -478,9 +474,12 @@ refuse:
  * periodic; together, a missing line means no host timer and no slow exit for a second (and so
  * no guest timer injection either, which happens only at a slow-path entry).
  */
+/*
+ * The one file-scope variable left from this work (REPORT.md, Phase 5 step 5.1): the host-timer
+ * source runs with no VM thread in hand, so it cannot find the vCPU's page any other way. Its
+ * per-vCPU state (hb_last, hb_sec) lives in that page.
+ */
 static struct vm_vcpu_shared_region *vm_hb_sr; /* the vCPU's page, set by its first slow exit */
-static u64_t                          vm_hb_last;
-static unsigned long                  vm_hb_sec;
 extern int                            chal_cyc_usec(void);
 
 void
@@ -492,14 +491,14 @@ vm_hb_tick(int src)
 
 	if (!vm_hb_sr || !per_sec) return;
 	rdtscll(now);
-	if (now - vm_hb_last < per_sec) return;
-	vm_hb_last = now;
-	vm_hb_sec++;
 	k = VM_HB_CTR(vm_hb_sr);
+	if (now - k->hb_last < per_sec) return;
+	k->hb_last = now;
+	k->hb_sec++;
 	t = thd_current(cos_cpu_local_info());
 	printk("HB %lu reg %lu/%lu unreg %lu/%lu r0 %lu fast ok %lu miss %lu bad %lu slow %lu vmm %lu "
 	       "lock %lu rev %lu vhw %lu vsw %lu last %lu rip %lx cr3 %lx via %s thd %lu\n",
-	       vm_hb_sec, (unsigned long)k->reg_ok, (unsigned long)k->reg_fail, (unsigned long)k->unreg_ok,
+	       (unsigned long)k->hb_sec, (unsigned long)k->reg_ok, (unsigned long)k->reg_fail, (unsigned long)k->unreg_ok,
 	       (unsigned long)k->unreg_fail, (unsigned long)k->ring0_refused, (unsigned long)k->fast_hits,
 	       (unsigned long)k->fast_misses, (unsigned long)k->fast_badslot, (unsigned long)k->slow_exits,
 	       (unsigned long)k->vmm_handled, (unsigned long)k->pl_locked, (unsigned long)k->pl_revoked,

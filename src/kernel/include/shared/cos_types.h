@@ -180,6 +180,13 @@ typedef enum {
 	CAPTBL_OP_VM_PROC_UNREGISTER,
 	/* w11 Phase 2: change one EPT leaf's permissions and invalidate (VMCALL_PT_LOCK) */
 	CAPTBL_OP_EPT_LEAF_PERM,
+	/*
+	 * w11 Phase 5 (A61, A62): retype a page into a VM's process table, and point a vCPU thread
+	 * at it. CAPTBL_OP_VM_PROC_REGISTER and _UNREGISTER above are invoked on that table's
+	 * capability from Phase 5 on (A63).
+	 */
+	CAPTBL_OP_VM_PROC_TBL_ACTIVATE,
+	CAPTBL_OP_VM_PROC_ATTACH,
 
 } syscall_op_t;
 
@@ -205,6 +212,7 @@ typedef enum {
 	CAP_VM_LAPIC,        /* lapic page for a vm thd */
 	CAP_VM_SHARED_MEM,   /* shared page for a vm thd */
 	CAP_VM_VMCB,         /* a virtual macihne control block cap */
+	CAP_VM_PROC_TBL,     /* w11 Phase 5: a VM's process table page (kernel/include/vm_proc.h) */
 } cap_t;
 
 /* TODO: pervasive use of these macros */
@@ -276,6 +284,9 @@ __captbl_cap2sz(cap_t c)
 	case CAP_VM_SHARED_MEM:
 	case CAP_VM_VMCB:
 	case CAP_VM_LAPIC_ACCESS:
+#if VMCALL_IDENTITY
+	case CAP_VM_PROC_TBL:
+#endif
 		return CAP_SZ_64B;
 	default:
 		return CAP_SZ_ERR;
@@ -689,6 +700,8 @@ struct vm_hb_ctr {
 	u64_t vmm_handled;  /* exits its handler loop has finished */
 	/* written by the VMM's page-table lock (VMCALL_PT_LOCK, pt_lock.c) */
 	u64_t pl_locked, pl_revoked, pl_viol_hw, pl_viol_sw;
+	/* the heartbeat's own state, per vCPU (w11 Phase 5, A66: no file-scope variable) */
+	u64_t hb_last, hb_sec;
 };
 #define VM_HB_CTR(sr) ((struct vm_hb_ctr *)((char *)(sr) + VM_HB_CTR_OFFSET))
 #endif
@@ -725,17 +738,14 @@ enum {
 #define VM_IPC_MAX_SINV_CAPS 16
 
 /*
- * w11: the per-VM process table (kernel/include/vm_proc.h). A VM's table is found by its
- * component's ASID: VM components get ASIDs from VM_PROC_ASID_BASE up
- * (PROTDOM_ASID_VM_BASE in components/lib/protdom/protdom.h; keep the two equal).
- * A root is a guest CR3 with the PCID (bits 0-11) and the no-flush bit (63) cleared. Bit 12
+ * w11: the per-VM process table (kernel/include/vm_proc.h). Since Phase 5 a VM's table is a page
+ * of its own, retyped by the capability manager when it creates the VM (CAP_VM_PROC_TBL), and a
+ * vCPU reaches it through its thread (thd->vcpu_ctx.proc_tbl). A root is a guest CR3 with the PCID (bits 0-11) and the no-flush bit (63) cleared. Bit 12
  * is an address bit and is kept (DECISIONS A8): without PTI a PGD is one 4 KiB page at any
  * 4 KiB address; under PTI a process has two roots (root, root + 4096), registered as two
  * entries of the same process component.
  */
 #define VM_PROC_MAX         16
-#define VM_PROC_MAX_VMS     8
-#define VM_PROC_ASID_BASE   2048
 #define VM_PROC_ROOT_MASK   (~(0xFFFUL | (1UL << 63)))
 
 /* w11 Phase 2: the permissions CAPTBL_OP_EPT_LEAF_PERM can give one EPT leaf */

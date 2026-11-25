@@ -23,9 +23,6 @@
 int vmx_ept_invalidate(unsigned long ept_root); /* platform/x86_64/vmx/vmx.c */
 #endif
 
-/* w11: one process table per VM, indexed by the VM component's ASID (vm_proc.h). */
-struct vm_proc_tbl vm_proc_tbls[VM_PROC_MAX_VMS];
-
 
 #define COS_DEFAULT_RET_CAP 0
 
@@ -1572,25 +1569,28 @@ static sword_t __attribute__((noinline)) composite_syscall_slowpath(struct pt_re
 			if (ret) kmem_unalloc(pte);
 			break;
 		}
-		case CAPTBL_OP_VM_PROC_REGISTER: {
-			capid_t       vm_comp_cap   = __userregs_get1(regs);
-			capid_t       proc_comp_cap = __userregs_get2(regs);
-			unsigned long root          = __userregs_get3(regs);
+#if VMCALL_IDENTITY
+		case CAPTBL_OP_VM_PROC_TBL_ACTIVATE: {
+			/* w11 Phase 5 (A61): in the pattern of CAPTBL_OP_VM_SHARED_MEM_ACTIVATE, plus the VM */
+			capid_t        pgtbl_addr  = __userregs_get1(regs);
+			capid_t        pgtbl_cap   = __userregs_get2(regs);
+			capid_t        tbl_cap     = __userregs_get3(regs);
+			capid_t        vm_comp_cap = __userregs_get4(regs);
+			vaddr_t        page;
+			unsigned long *pte = NULL;
 
-#if VMCALL_GATE
-			ret = vm_proc_register(ct, vm_comp_cap, proc_comp_cap, root, __userregs_get4(regs));
-#else
-			ret = vm_proc_register(ct, vm_comp_cap, proc_comp_cap, root);
+			ret = cap_kmem_activate(ct, pgtbl_cap, pgtbl_addr, (unsigned long *)&page, &pte);
+			if (likely(!ret)) ret = vm_proc_tbl_activate(ct, cap, tbl_cap, page, vm_comp_cap);
+			if (ret) kmem_unalloc(pte);
+
+			break;
+		}
+		case CAPTBL_OP_VM_PROC_ATTACH: {
+			/* w11 Phase 5 (A62): names the vCPU's thread, as CAPTBL_OP_THDTLSSET does */
+			ret = vm_proc_attach(ct, __userregs_get1(regs), __userregs_get2(regs));
+			break;
+		}
 #endif
-			break;
-		}
-		case CAPTBL_OP_VM_PROC_UNREGISTER: {
-			capid_t       vm_comp_cap = __userregs_get1(regs);
-			unsigned long root        = __userregs_get2(regs);
-
-			ret = vm_proc_unregister(ct, vm_comp_cap, root);
-			break;
-		}
 		default:
 			goto err;
 		}
@@ -1727,6 +1727,24 @@ static sword_t __attribute__((noinline)) composite_syscall_slowpath(struct pt_re
 		}
 		break;
 	}
+#if VMCALL_IDENTITY
+	case CAP_VM_PROC_TBL: {
+		/* w11 Phase 5 (A63): a VM's process table is written only through its own capability */
+		struct cap_vm_proc_tbl *tc = (struct cap_vm_proc_tbl *)ch;
+
+		switch (op) {
+		case CAPTBL_OP_VM_PROC_REGISTER:
+			ret = vm_proc_register(ct, tc, __userregs_get1(regs), __userregs_get2(regs), __userregs_get3(regs));
+			break;
+		case CAPTBL_OP_VM_PROC_UNREGISTER:
+			ret = vm_proc_unregister(tc, __userregs_get1(regs));
+			break;
+		default:
+			goto err;
+		}
+		break;
+	}
+#endif
 	case CAP_SRET: {
 		/*
 		 * We usually don't have sret cap as we have 0 as the
