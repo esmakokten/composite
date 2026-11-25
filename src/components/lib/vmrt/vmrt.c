@@ -454,8 +454,13 @@ vmrt_handle_reason(struct vmrt_vm_vcpu *vcpu, u64_t reason)
 		VM_PANIC(vcpu);
 		break;
 	case VM_EXIT_REASON_PREEMPTION_TIMER:
+#if VM_GUEST_TICK
+		/* w11 Phase 2b: the guest tick; the loop below injects the guest's timer if it is due */
+		break;
+#else
 		VM_PANIC(vcpu);
 		break;
+#endif
 	case VM_EXIT_REASON_XSETBV:
 		xsetbv_handler(vcpu);
 		break;

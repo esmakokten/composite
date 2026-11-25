@@ -183,14 +183,64 @@ vmx_guest_state_init(void)
 	vmwrite(GUEST_IA32_PAT, msr_get(IA32_PAT));
 }
 
+#if VM_GUEST_TICK
+/*
+ * w11 Phase 2b: the guest tick. The VMX-preemption timer counts down while the guest runs, one step
+ * per 2^rate TSC cycles (IA32_VMX_MISC bits 4:0), and exits (reason 52) at zero. With the exit
+ * control "save VMX-preemption timer value" every VM exit writes the remaining count back to the
+ * VMCS, so a fast-path vmcall round trip neither resets nor stops it; only vmx_resume (the slow
+ * path) reloads it. Both controls are checked in the capability MSRs, not assumed.
+ *
+ * The period is 1 ms of *guest* execution. The timer does not count while the core is in the host,
+ * and an errand-heavy guest spends most of its wall time there (the fast path and the service): in
+ * QEMU about a quarter of wall time was guest time, so 10 ms of guest time was about 40 ms of wall
+ * time, the guest's HZ=250 ticks lagged, and its clocksource watchdog demoted the TSC. 1 ms keeps a
+ * tick inside the guest's 4 ms period down to a 25% guest share.
+ */
+#define VM_TICK_GUEST_USEC 1000
+#define VMX_PIN_PREEMPTION_TIMER   BIT(6)
+#define VMX_EXIT_SAVE_PREEMPTION   BIT(22)
+#define VMX_PREEMPTION_TIMER_VALUE 0x482E
+
+int   vm_tick_on;
+u32_t vm_tick_value;
+
+static void
+vm_tick_setup(void)
+{
+	static int    reported;
+	u64_t         pin  = msr_get(IA32_VMX_PINBASED_CTLS) >> 32, exit = msr_get(IA32_VMX_EXIT_CTLS) >> 32;
+	u32_t         rate = (u32_t)msr_get(IA32_VMX_MISC) & 0x1f;
+	unsigned long cyc  = (unsigned long)chal_cyc_usec();
+
+	if (!cyc) cyc = 2100; /* the R740's 2.1 GHz, if the LAPIC timer is not calibrated yet */
+	vm_tick_on    = (pin & VMX_PIN_PREEMPTION_TIMER) && (exit & VMX_EXIT_SAVE_PREEMPTION);
+	vm_tick_value = (u32_t)((cyc * VM_TICK_GUEST_USEC) >> rate);
+	if (!reported) {
+		reported = 1;
+		printk("vmx: guest tick: preemption timer %s, save-on-exit %s, rate 2^%u TSC, value %u (%u us of guest time): %s\n",
+		       (pin & VMX_PIN_PREEMPTION_TIMER) ? "offered" : "NOT offered",
+		       (exit & VMX_EXIT_SAVE_PREEMPTION) ? "offered" : "NOT offered", rate, vm_tick_value,
+		       VM_TICK_GUEST_USEC, vm_tick_on ? "ON" : "OFF");
+	}
+}
+#endif
+
 void
 vmx_pinbased_ctl_init(void)
 {
 	u32_t pinbased_execution_ctl = 0;
 
 	pinbased_execution_ctl |= EXTERNAL_INTERRUPT_EXITING | PROCESS_POSTED_INTERRUPTS ;
+#if VM_GUEST_TICK
+	vm_tick_setup();
+	if (vm_tick_on) pinbased_execution_ctl |= VMX_PIN_PREEMPTION_TIMER;
+#endif
 	pinbased_execution_ctl = fix_reserved_ctrl_bits(IA32_VMX_PINBASED_CTLS, pinbased_execution_ctl);
 	vmwrite(PIN_BASED_VM_EXECUTION_CONTROLS, pinbased_execution_ctl);
+#if VM_GUEST_TICK
+	if (vm_tick_on) vmwrite(VMX_PREEMPTION_TIMER_VALUE, vm_tick_value);
+#endif
 }
 
 void
@@ -222,6 +272,9 @@ vmx_vm_exit_ctl_init(void)
 	vm_exit_ctls = HOST_ADDRESS_SPACE_SIZE | ACKNOWLEDGE_INTERRUPT_ON_EXIT
 			| EXIT_SAVE_IA32_PAT | EXIT_LOAD_IA32_PAT
 			| EXIT_SAVE_IA32_EFER | EXIT_LOAD_IA32_EFER;
+#if VM_GUEST_TICK
+	if (vm_tick_on) vm_exit_ctls |= VMX_EXIT_SAVE_PREEMPTION;
+#endif
 
 	vm_exit_ctls = fix_reserved_ctrl_bits(IA32_VMX_EXIT_CTLS, vm_exit_ctls);
 	vmwrite(PRIMARY_VM_EXIT_CONTROLS, vm_exit_ctls);

@@ -178,6 +178,15 @@ vmx_resume(struct thread *thd)
 	val |= cr4_fixed1_bits;
 	val &= cr4_fixed0_bits;
 	vmwrite(GUEST_CR4, val);
+#if VM_GUEST_TICK
+	/* w11 Phase 2b: a slow-path entry restarts the guest tick's period (vmx.c, vm_tick_setup) */
+	{
+		extern int   vm_tick_on;
+		extern u32_t vm_tick_value;
+
+		if (vm_tick_on) vmwrite(0x482E, vm_tick_value);
+	}
+#endif
 
 	/* This is awkward here, but necessary as the manual mentions that long-mode status should be put into vm entry ctl */
 	if (unlikely(shared_region->efer & BIT(10))) {

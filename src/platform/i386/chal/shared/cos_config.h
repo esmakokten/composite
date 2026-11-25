@@ -173,6 +173,14 @@
 #define VMCALL_PT_LOCK 0
 /* w11 Phase 2, T3 arm B: a violation unlocks only that page and keeps the registration (VMM only) */
 #define VMCALL_PT_LOCK_COUNT_ONLY 0
+/*
+ * w11 Phase 2b. VM_GUEST_TICK: a guest that only makes fast-path vmcalls never takes a slow exit,
+ * so its timer (injected only at a slow-path entry) stops. Under the switch the VMX-preemption
+ * timer forces a slow exit after at most 1 ms of guest execution (vmx.c): its count is saved at every
+ * VM exit and so carries across fast-path round trips, and it is reloaded only on the slow path
+ * (vmx_resume). 0 = the old behaviour.
+ */
+#define VM_GUEST_TICK 0
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4
