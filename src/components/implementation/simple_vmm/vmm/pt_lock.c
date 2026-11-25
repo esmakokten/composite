@@ -51,7 +51,8 @@ static struct vmrt_vm_comp *pl_vmc; /* the VM, for GPA2HVA outside a vCPU's cont
 static int            pl_unit_pending;
 
 static struct {
-	unsigned long reg_ok, reg_fail, unreg_unlock, revoked, locked_now, walk_refused;
+	unsigned long reg_ok, reg_fail, unreg_unlock, revoked, locked_now, walk_refused, gates;
+	unsigned long last_root, last_gate, last_gpa, last_comp;
 	unsigned long viol_hw, viol_sw, viol_nolin, count_only_unlocks;
 	unsigned long n_rip;
 	struct { unsigned long rip, gpa, qual; } rip[PL_RIPS];
@@ -328,8 +329,17 @@ pl_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long root2, 
 			ret = capmgr_vm_proc_register_gate(pl_vm, pl_comps[comp], root2, gate_va + off);
 			if (ret) capmgr_vm_proc_unregister(pl_vm, root);
 		}
-		if (!ret) printc("VMM: pt_lock: gate for root %lx at %lx (page %lx), vmcall at %lx, component %lu\n", root,
-		                 gate_va, gate_gpa, gate_va + off, comp);
+		/*
+		 * Not printed here: at the serial line's speed one line is about 8 ms, which was 99.8% of a
+		 * registration's cost on the R740 (18.8 million cycles with it). The dump prints the last gate.
+		 */
+		if (!ret) {
+			pl.gates++;
+			pl.last_root = root;
+			pl.last_gate = gate_va;
+			pl.last_gpa  = gate_gpa;
+			pl.last_comp = comp;
+		}
 	} else {
 		/* ... register second. */
 		ret = capmgr_vm_proc_register(pl_vm, pl_proc_comp, root);
@@ -464,10 +474,13 @@ pt_lock_dump(void)
 {
 	unsigned long i;
 
-	printc("VMM: pt_lock: locked registrations ok %lu fail %lu (walk refused %lu), unregister+unlock %lu, revoked %lu, "
+	printc("VMM: pt_lock: locked registrations ok %lu (gates %lu) fail %lu (walk refused %lu), unregister+unlock %lu, revoked %lu, "
 	       "pages locked now %lu; violations hw %lu sw %lu no-linear %lu; count-only unlocks %lu%s\n",
-	       pl.reg_ok, pl.reg_fail, pl.walk_refused, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
+	       pl.reg_ok, pl.gates, pl.reg_fail, pl.walk_refused, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
 	       pl.viol_nolin, pl.count_only_unlocks, VMCALL_PT_LOCK_COUNT_ONLY ? " (count-only mode)" : "");
+	if (pl.gates)
+		printc("VMM: pt_lock: last gate: root %lx at %lx (page %lx), vmcall at %lx, component %lu\n", pl.last_root,
+		       pl.last_gate, pl.last_gpa, pl.last_gate + ERRAND_ID_GATE_VMCALL_OFF, pl.last_comp);
 	for (i = 0; i < pl.n_rip && i < PL_RIPS; i++) {
 		printc("VMM: pt_lock: violation %lu: rip %lx gpa %lx qualification %lx (%s)\n", i, pl.rip[i].rip,
 		       pl.rip[i].gpa, pl.rip[i].qual,
