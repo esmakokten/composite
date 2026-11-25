@@ -204,6 +204,11 @@
  */
 #define VMCALL_GATE_INTR 0
 #define VMCALL_GATE_INTR_COUNT_ONLY 0
+/*
+ * w11 Phase 5, T13a only: the VMM does not attach its VM's process table to the vCPU (vmrt.c), so
+ * every ring-3 vmcall must be refused. Requires VMCALL_IDENTITY. Always 0 outside that test.
+ */
+#define VMCALL_TEST_NO_ATTACH 0
 #if (VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY) && !VMCALL_GATE
 #error "VMCALL_GATE_INTR needs VMCALL_GATE"
 #endif

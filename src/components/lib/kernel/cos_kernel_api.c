@@ -1172,24 +1172,47 @@ cos_vm_vmcb_alloc(struct cos_compinfo *ci, vm_vmcscap_t vmcs_cap, vm_msrbitmapca
 
 }
 
-int
-cos_vm_proc_register(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root)
+#if VMCALL_IDENTITY
+capid_t
+cos_vm_proc_tbl_alloc(struct cos_compinfo *ci, compcap_t vm_comp)
 {
-	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_REGISTER, vm_comp, proc_comp, root, 0);
+	vaddr_t kmem = __kmem_bump_alloc(ci);
+	capid_t cap;
+
+	if (!kmem) return 0;
+	cap = __capid_bump_alloc(__compinfo_metacap(ci), CAP_VM_PROC_TBL);
+	if (!cap) return 0;
+	if (call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_TBL_ACTIVATE, kmem, __compinfo_metacap(ci)->mi.pgtbl_cap, cap,
+	                vm_comp))
+		return 0;
+
+	return cap;
 }
 
 int
-cos_vm_proc_register_gate(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root,
-                          unsigned long gate_rip)
+cos_vm_proc_attach(struct cos_compinfo *ci, thdcap_t vcpu, capid_t tbl)
 {
-	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_REGISTER, vm_comp, proc_comp, root, gate_rip);
+	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_ATTACH, vcpu, tbl, 0, 0);
 }
 
 int
-cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long root)
+cos_vm_proc_register(capid_t tbl, compcap_t proc_comp, unsigned long root)
 {
-	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_UNREGISTER, vm_comp, root, 0, 0);
+	return call_cap_op(tbl, CAPTBL_OP_VM_PROC_REGISTER, proc_comp, root, 0, 0);
 }
+
+int
+cos_vm_proc_register_gate(capid_t tbl, compcap_t proc_comp, unsigned long root, unsigned long gate_rip)
+{
+	return call_cap_op(tbl, CAPTBL_OP_VM_PROC_REGISTER, proc_comp, root, gate_rip, 0);
+}
+
+int
+cos_vm_proc_unregister(capid_t tbl, unsigned long root)
+{
+	return call_cap_op(tbl, CAPTBL_OP_VM_PROC_UNREGISTER, root, 0, 0, 0);
+}
+#endif
 
 int
 cos_ept_leaf_perm(pgtblcap_t ept, vaddr_t addr, unsigned long perm)

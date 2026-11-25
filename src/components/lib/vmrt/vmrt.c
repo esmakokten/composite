@@ -156,6 +156,13 @@ vmrt_vm_vcpu_init(struct vmrt_vm_comp *vm, u32_t vcpu_nr)
 
 	cap = capmgr_vm_vcpu_create(vcpu->vm->comp_id, vcpu->vmcb_cap, &tid);
 	assert(tid != 0);
+#if VMCALL_IDENTITY && !VMCALL_TEST_NO_ATTACH
+	/* w11 Phase 5 (A62): the vCPU reaches its VM's process table through its thread */
+	if (capmgr_vm_proc_attach(vcpu->vm->comp_id, tid)) {
+		printc("vmrt: vcpu %d: process table attach FAILED\n", vcpu_nr);
+		assert(0);
+	}
+#endif
 	vcpu->tid = tid;
 	vcpu->cap = cap;
 	vcpu->cpuid = vcpu_nr;

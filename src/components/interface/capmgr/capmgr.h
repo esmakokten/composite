@@ -110,5 +110,10 @@ int COS_STUB_DECL(capmgr_vm_proc_register)(compid_t vm_comp_id, compid_t proc_co
 int capmgr_vm_proc_register_gate(compid_t vm_comp_id, compid_t proc_comp_id, word_t root, word_t gate_rip);
 int capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root);
 int COS_STUB_DECL(capmgr_vm_proc_unregister)(compid_t vm_comp_id, word_t root);
+/*
+ * w11 Phase 5 (A62): point a vCPU thread of the calling VMM's VM at the VM's process table, once,
+ * before it first runs. A vCPU that is never attached has every ring-3 vmcall refused.
+ */
+int capmgr_vm_proc_attach(compid_t vm_comp_id, thdid_t vcpu_tid);
 
 #endif /* CAPMGR_H */

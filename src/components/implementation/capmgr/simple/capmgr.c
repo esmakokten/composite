@@ -27,6 +27,9 @@ struct cm_comp {
 	struct crt_comp comp;
 	struct cm_rcv *sched_rcv[NUM_CPU];    /* rcv cap for this scheduler or NULL if not a scheduler */
 	struct cm_rcv *sched_parent; /* rcv cap for this scheduler's scheduler, or NULL */
+#if VMCALL_IDENTITY
+	capid_t vm_proc_tbl; /* w11 Phase 5 (A61): a VM's process table capability, made with the VM */
+#endif
 };
 
 struct cm_thd {
@@ -1004,6 +1007,12 @@ capmgr_vm_comp_create(u64_t mem_sz)
 	assert(c);
 
 	crt_comp_vm_create(&c->comp, name, id, protdom);
+#if VMCALL_IDENTITY
+	/* w11 Phase 5 (A61): the VM's process table, a page of the capability manager's memory */
+	c->vm_proc_tbl = cos_vm_proc_tbl_alloc(cos_compinfo_get(cos_defcompinfo_curr_get()),
+	                                       cos_compinfo_get(c->comp.comp_res)->comp_cap);
+	assert(c->vm_proc_tbl);
+#endif
 
 	ss_comp_activate(c);
 
@@ -1155,14 +1164,17 @@ capmgr_vm_sinv_install(compid_t vm_comp_id, capid_t sinv_cap, capid_t slot)
  * (one on the VM's page table, made by capmgr_vm_proc_create); the kernel checks the rest
  * (kernel/include/vm_proc.h).
  */
+#if VMCALL_IDENTITY
 static int
-vm_proc_comps(compid_t vm_comp_id, compid_t proc_comp_id, compcap_t *vmc, compcap_t *pc)
+vm_proc_comps(compid_t vm_comp_id, compid_t proc_comp_id, capid_t *tbl, compcap_t *pc)
 {
 	struct cm_comp *vmm = ss_comp_get((compid_t)cos_inv_token());
 	struct cm_comp *vm  = ss_comp_get(vm_comp_id);
 
+	/* The caller owns the VM: the check that stays (Phase 5) */
 	if (!vmm || !vm || vm->comp.vm_comp_info.vmm_comp_id != vmm->comp.id) return -EINVAL;
-	*vmc = cos_compinfo_get(vm->comp.comp_res)->comp_cap;
+	if (!vm->vm_proc_tbl) return -EINVAL;
+	*tbl = vm->vm_proc_tbl;
 	if (pc) {
 		struct cm_comp *p = ss_comp_get(proc_comp_id);
 
@@ -1172,6 +1184,7 @@ vm_proc_comps(compid_t vm_comp_id, compid_t proc_comp_id, compcap_t *vmc, compca
 
 	return 0;
 }
+#endif
 
 compid_t
 capmgr_vm_proc_create(compid_t vm_comp_id, word_t slot_mask)
@@ -1221,38 +1234,61 @@ capmgr_vm_proc_create(compid_t vm_comp_id, word_t slot_mask)
 	return id;
 }
 
+#if VMCALL_IDENTITY
 int
 capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root)
 {
-	compcap_t vmc, pc;
+	capid_t   tbl;
+	compcap_t pc;
 	int       ret;
 
-	if ((ret = vm_proc_comps(vm_comp_id, proc_comp_id, &vmc, &pc))) return ret;
+	if ((ret = vm_proc_comps(vm_comp_id, proc_comp_id, &tbl, &pc))) return ret;
 
-	return cos_vm_proc_register(cos_compinfo_get(cos_defcompinfo_curr_get()), vmc, pc, root);
+	return cos_vm_proc_register(tbl, pc, root);
 }
 
 int
 capmgr_vm_proc_register_gate(compid_t vm_comp_id, compid_t proc_comp_id, word_t root, word_t gate_rip)
 {
-	compcap_t vmc, pc;
+	capid_t   tbl;
+	compcap_t pc;
 	int       ret;
 
-	if ((ret = vm_proc_comps(vm_comp_id, proc_comp_id, &vmc, &pc))) return ret;
+	if ((ret = vm_proc_comps(vm_comp_id, proc_comp_id, &tbl, &pc))) return ret;
 
-	return cos_vm_proc_register_gate(cos_compinfo_get(cos_defcompinfo_curr_get()), vmc, pc, root, gate_rip);
+	return cos_vm_proc_register_gate(tbl, pc, root, gate_rip);
 }
 
 int
 capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root)
 {
-	compcap_t vmc;
-	int       ret;
+	capid_t tbl;
+	int     ret;
 
-	if ((ret = vm_proc_comps(vm_comp_id, 0, &vmc, NULL))) return ret;
+	if ((ret = vm_proc_comps(vm_comp_id, 0, &tbl, NULL))) return ret;
 
-	return cos_vm_proc_unregister(cos_compinfo_get(cos_defcompinfo_curr_get()), vmc, root);
+	return cos_vm_proc_unregister(tbl, root);
 }
+
+int
+capmgr_vm_proc_attach(compid_t vm_comp_id, thdid_t vcpu_tid)
+{
+	struct cm_thd *t = capmgr_get_thd(vcpu_tid);
+	capid_t        tbl;
+	int            ret;
+
+	if ((ret = vm_proc_comps(vm_comp_id, 0, &tbl, NULL))) return ret;
+	/* The kernel checks that the thread is a vCPU of this VM (its EPT is the table's). */
+	if (!t) return -EINVAL;
+
+	return cos_vm_proc_attach(cos_compinfo_get(cos_defcompinfo_curr_get()), t->thd.cap, tbl);
+}
+#else  /* without the identity check there is no process table */
+int capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root) { return -EINVAL; }
+int capmgr_vm_proc_register_gate(compid_t vm_comp_id, compid_t proc_comp_id, word_t root, word_t gate_rip) { return -EINVAL; }
+int capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root) { return -EINVAL; }
+int capmgr_vm_proc_attach(compid_t vm_comp_id, thdid_t vcpu_tid) { return -EINVAL; }
+#endif
 
 thdcap_t  capmgr_aep_create_thunk(struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax) { BUG(); return 0; }
 thdcap_t  capmgr_aep_create_ext(spdid_t child, struct cos_aep_info *a, thdclosure_index_t idx, int owntc, cos_channelkey_t key, microsec_t ipiwin, u32_t ipimax, arcvcap_t *extrcv) { BUG(); return 0; }

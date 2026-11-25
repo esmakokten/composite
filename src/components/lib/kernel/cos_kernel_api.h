@@ -164,12 +164,18 @@ capid_t cos_vm_lapic_alloc(struct cos_compinfo *ci, vaddr_t kmem);
 capid_t cos_vm_shared_region_alloc(struct cos_compinfo *ci, vaddr_t kmem);
 capid_t cos_vm_lapic_access_alloc(struct cos_compinfo *ci, vaddr_t kmem);
 capid_t cos_vm_vmcb_alloc(struct cos_compinfo *ci, vm_vmcscap_t vmcs_cap, vm_msrbitmapcap_t msr_bitmap_cap, vm_lapicaccesscap_t lapic_access_cap, vm_lapiccap_t lapic_cap, vm_shared_mem_t shared_mem_cap, thdcap_t handler_cap, word_t vpid);
-/* w11: bind a guest page-table root to a process component of the VM, and unbind it (kernel/include/vm_proc.h) */
-int cos_vm_proc_register(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root);
+/*
+ * w11 Phase 5: a VM's process table is a page retyped from `ci`'s memory, behind its own capability
+ * (kernel/include/vm_proc.h); a vCPU thread is pointed at it once. Register and unregister are
+ * operations on the table's capability.
+ */
+capid_t cos_vm_proc_tbl_alloc(struct cos_compinfo *ci, compcap_t vm_comp);
+int     cos_vm_proc_attach(struct cos_compinfo *ci, thdcap_t vcpu, capid_t tbl);
+/* w11: bind a guest page-table root to a process component of the VM, and unbind it */
+int cos_vm_proc_register(capid_t tbl, compcap_t proc_comp, unsigned long root);
 /* w11 Phase 3: the same, with the gate's vmcall address (VMCALL_GATE; 0 = no gate) */
-int cos_vm_proc_register_gate(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root,
-                              unsigned long gate_rip);
-int cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long root);
+int cos_vm_proc_register_gate(capid_t tbl, compcap_t proc_comp, unsigned long root, unsigned long gate_rip);
+int cos_vm_proc_unregister(capid_t tbl, unsigned long root);
 /* w11 Phase 2: one EPT leaf's permissions (VM_EPT_PERM_*), with INVEPT; needs VMCALL_PT_LOCK */
 int cos_ept_leaf_perm(pgtblcap_t ept, vaddr_t addr, unsigned long perm);
 
