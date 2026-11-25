@@ -664,6 +664,9 @@ struct vm_vcpu_shared_region {
 
 	u64_t microcode_version;
 	u16_t inject_evt;
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+	u64_t guest_cpl; /* w11 Phase 4 (A54): the DPL of SS at this slow exit, written by the kernel */
+#endif
 
 	struct vm_pi_desc pi_desc __attribute__((aligned(CACHE_LINE))); /* posted interrupt support, which is essentially an interface to record interrupt vectors */
 };

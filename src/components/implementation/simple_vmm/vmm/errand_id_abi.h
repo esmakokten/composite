@@ -58,6 +58,7 @@
 #define ERRAND_ID_IOC_REGISTER_GATE 0xE1D0000AUL /* arg: struct errand_id_gate_req * */
 #define ERRAND_ID_IOC_T5            0xE1D0000BUL /* arg: struct errand_id_t5 *: return to user mode there */
 #define ERRAND_ID_IOC_T6            0xE1D0000CUL /* write one byte to the gate page through the direct map */
+#define ERRAND_ID_IOC_T11           0xE1D0000DUL /* arg: struct errand_id_t11 *: arm (mode != 0) or disarm (0) */
 
 /* T2's ring-0 attempts: `count` vmcalls from the module with rax = `rax`. */
 struct errand_id_kvmcall {
@@ -113,6 +114,26 @@ struct errand_id_gate_req {
 /* T5: the module rewrites the calling thread's saved user frame; the ioctl "returns" there. */
 struct errand_id_t5 {
 	unsigned long rip, rsp, rax, rbx, rcx, rdx, rsi, rdi;
+};
+
+/*
+ * Phase 4, T11: a 1 kHz timer in the guest kernel looks at the interrupt frame of the calling process
+ * whenever it interrupts it. The offsets counted are 0, 1, 7, 10, 11 (the stub), 16 (the resume
+ * point, A52) and anything else in the gate page. In tamper mode it writes ERRAND_ID_T11_MARK into
+ * rbx (the first argument) when the frame is at or before the vmcall, into rax (the result) when it
+ * is after the vmcall (offsets 10 and 11), and into both at the resume point (A59).
+ */
+#define ERRAND_ID_T11_MARK   0x4d0000000UL
+#define ERRAND_ID_T11_COUNT  1UL
+#define ERRAND_ID_T11_TAMPER 2UL
+struct errand_id_t11 {
+	unsigned long mode;          /* in: 0 disarm, else ERRAND_ID_T11_* */
+	unsigned long ticks;         /* out: timer callbacks */
+	unsigned long frames;        /* out: callbacks that interrupted the process in user mode */
+	unsigned long in_gate[7];    /* out: of those, in the gate page, by offset 0/1/7/10/11/16/other */
+	unsigned long blank, nonblank; /* out: frames in the gate page whose argument registers are all zero, or not */
+	unsigned long nonblank_own;  /* out: of the not-blank ones, those whose non-zero registers all hold the marker (Linux's own write) */
+	unsigned long tampered;      /* out: frames the module wrote the marker into */
 };
 
 /* What the module measured for the last locked registration (T9). */

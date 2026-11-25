@@ -79,6 +79,12 @@ void vmrt_vm_vcpu_init(struct vmrt_vm_comp *vm, u32_t vcpu_nr);
 void vmrt_vm_vcpu_resume(struct vmrt_vm_vcpu *vcpu);
 void vmrt_vm_data_copy_to(struct vmrt_vm_comp *vm, char *image, u64_t size, paddr_t gpa);
 void vmrt_vm_exception_handler(void *vcpu);
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+void vmrt_gate_entry(struct vmrt_vm_vcpu *vcpu);
+#endif
+#if VMCALL_GATE_INTR
+int  vmrt_gate_cpuid(struct vmrt_vm_vcpu *vcpu);
+#endif
 void vmrt_vm_vcpu_start(struct vmrt_vm_vcpu *vcpu);
 paddr_t vmrt_vm_gva2gpa(struct vmrt_vm_vcpu *vcpu, vaddr_t gva);
 static inline struct vmrt_vm_vcpu *vmrt_get_vcpu(struct vmrt_vm_comp *vm, u32_t vcpu_nr) { assert(vcpu_nr < vm->num_vcpu);return &vm->vcpus[vcpu_nr]; }

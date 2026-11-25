@@ -417,6 +417,10 @@ vmrt_handle_reason(struct vmrt_vm_vcpu *vcpu, u64_t reason)
 		VM_PANIC(vcpu);
 		break;
 	case VM_EXIT_REASON_CPUID:
+#if VMCALL_GATE_INTR
+		/* w11 Phase 4 (A52): the gate's resume point is a cpuid; the VMM restores the thread there */
+		if (vmrt_gate_cpuid(vcpu)) break;
+#endif
 		cpuid_handler(vcpu);
 		break;
 	case VM_EXIT_REASON_HLT:
@@ -481,6 +485,14 @@ vmrt_vm_vcpu_start(struct vmrt_vm_vcpu *vcpu)
 	sched_thd_param_set(vcpu->handler_tid, sched_param_pack(SCHEDP_PRIO, 31));
 }
 
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+/* w11 Phase 4: implemented by the VMM (simple_vmm pt_lock.c); these defaults do nothing */
+void __attribute__((weak)) vmrt_gate_entry(struct vmrt_vm_vcpu *vcpu) { (void)vcpu; }
+#endif
+#if VMCALL_GATE_INTR
+int __attribute__((weak)) vmrt_gate_cpuid(struct vmrt_vm_vcpu *vcpu) { (void)vcpu; return 0; }
+#endif
+
 void
 vmrt_vm_exception_handler(void *_vcpu)
 {
@@ -513,6 +525,10 @@ vmrt_vm_exception_handler(void *_vcpu)
 
 #if VMX_SUPPORT_POSTED_INTR
 		vlapic_inject_intr(vcpu);
+#endif
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+		/* w11 Phase 4 (A51): the last thing before the slow-path entry, after any injection */
+		vmrt_gate_entry(vcpu);
 #endif
 	}
 }

@@ -42,6 +42,9 @@ struct pl_proc {
 	/* Phase 3: the gate (A32), its page also the last entry of gpa[] */
 	int           gated;
 	unsigned long gate_va, gate_gpa, comp;
+	/* Phase 4 (A53): one saved slot, the registers of a thread hidden at the resume point */
+	int           slot_used;
+	u64_t         slot_r[15], slot_ip, slot_sp;
 };
 
 static struct pl_proc pl_procs[PL_PROCS];
@@ -116,6 +119,7 @@ pl_unlock_all(struct pl_proc *p)
  * page inside guest memory. Returns 0, or -1 with *miss and *why filled. The kernel half is not
  * walked: its lower tables are shared by every process and cannot be locked.
  */
+#define PL_RESUME_OFF 16 /* Phase 4: the gate's resume point (A52) */
 #define PL_PTE_P     0x1UL
 #define PL_PTE_U     0x4UL
 #define PL_PTE_PS    0x80UL
@@ -208,6 +212,11 @@ pl_gate_write(struct vmrt_vm_vcpu *vcpu, unsigned long gate_gpa)
 
 	memset(g, 0xcc, PAGE_SIZE_4K);
 	memcpy(g, stub, sizeof(stub));
+#if VMCALL_GATE_INTR
+	/* Phase 4 (A52): the resume point, a cpuid that exits to the VMM, then int3 */
+	g[PL_RESUME_OFF]     = 0x0f;
+	g[PL_RESUME_OFF + 1] = 0xa2;
+#endif
 	for (i = 0; i + 2 < PAGE_SIZE_4K; i++) {
 		if (g[i] == 0x0f && g[i + 1] == 0x01 && g[i + 2] == 0xc1) {
 			found = i;
@@ -323,6 +332,7 @@ pl_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long root2, 
 		p->gpa[p->n++] = gate_gpa;
 		pl.locked_now++;
 		p->gated    = 1;
+		p->slot_used = 0;
 		p->gate_va  = gate_va;
 		p->gate_gpa = gate_gpa;
 		p->comp     = comp;
@@ -471,6 +481,129 @@ pt_lock_ept_violation(struct vmrt_vm_vcpu *vcpu)
 	return 1; /* RIP not advanced: the write runs again, now allowed */
 }
 
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+/*
+ * Phase 4: an interrupt inside the gate (DECISIONS A51 to A54).
+ *
+ * vmrt_gate_entry runs just before every slow-path entry, after any injection. A "landing" is an
+ * entry whose thread is at privilege level 3 (the kernel's DPL of SS, A54), whose masked CR3 is a
+ * gated registration's root, whose RIP is in that gate page and is not the resume point, and with
+ * RVI non-zero, so that the entry would deliver a guest interrupt inside the gate. Counted always;
+ * under VMCALL_GATE_INTR (not COUNT_ONLY) the thread is also hidden: its registers saved in the
+ * registration's slot and zeroed, RIP moved to the resume point (a cpuid). Linux then sees a blank
+ * frame at the resume point. vmrt_gate_cpuid restores the thread when it reaches the resume point
+ * with no interrupt pending, without advancing RIP, so it continues at the instruction it was
+ * interrupted at. Nothing here touches the fast path.
+ */
+static struct {
+	unsigned long entries, rvi, land[6], land_norvi[6], hides, restores, deferred, collisions, resume_empty;
+} gi;
+
+static int
+pl_off_idx(unsigned long off)
+{
+	switch (off) {
+	case 0: return 0;
+	case 1: return 1;
+	case ERRAND_ID_GATE_VMCALL_OFF: return 2;
+	case 10: return 3;
+	case 11: return 4;
+	default: return 5;
+	}
+}
+
+static struct pl_proc *
+pl_gated_thread(struct vmrt_vm_vcpu *vcpu)
+{
+	volatile struct vm_vcpu_shared_region *r = vcpu->shared_region;
+	struct pl_proc                        *p;
+
+	if (r->guest_cpl != 3) return NULL;
+	p = pl_find_root(r->cr3 & VM_PROC_ROOT_MASK);
+	return (p && p->gated) ? p : NULL;
+}
+
+/* the 15 general registers of the shared region, in its order (r15 ... ax) */
+#define PL_GPR(r) (&(r)->r15)
+
+void
+vmrt_gate_entry(struct vmrt_vm_vcpu *vcpu)
+{
+	volatile struct vm_vcpu_shared_region *r = vcpu->shared_region;
+	struct pl_proc                        *p;
+	unsigned long                          off;
+	int                                    rvi = (r->interrupt_status & 0xff) != 0, k;
+
+	gi.entries++;
+	if (rvi) gi.rvi++;
+	if (!(p = pl_gated_thread(vcpu))) return;
+	off = r->ip - p->gate_va;
+	if (off >= PAGE_SIZE_4K || off == PL_RESUME_OFF) return;
+	if (!rvi) {
+		gi.land_norvi[pl_off_idx(off)]++;
+		return;
+	}
+	gi.land[pl_off_idx(off)]++;
+#if VMCALL_GATE_INTR && !VMCALL_GATE_INTR_COUNT_ONLY
+	if (p->slot_used) {
+		/* A53: one slot; a second landing while it is full revokes (unregister first) */
+		gi.collisions++;
+		capmgr_vm_proc_unregister(pl_vm, p->root);
+		if (p->root2) capmgr_vm_proc_unregister(pl_vm, p->root2);
+		p->slot_used = 0;
+		pl_unlock_all(p);
+		p->used = 0;
+		pl.revoked++;
+		return;
+	}
+	for (k = 0; k < 15; k++) {
+		p->slot_r[k]     = PL_GPR(r)[k];
+		PL_GPR(r)[k]     = 0;
+	}
+	p->slot_ip   = r->ip;
+	p->slot_sp   = r->sp;
+	p->slot_used = 1;
+	r->ip        = p->gate_va + PL_RESUME_OFF; /* RSP is left as it is (A51) */
+	gi.hides++;
+#else
+	(void)k;
+#endif
+}
+
+#if VMCALL_GATE_INTR
+int
+vmrt_gate_cpuid(struct vmrt_vm_vcpu *vcpu)
+{
+	volatile struct vm_vcpu_shared_region *r = vcpu->shared_region;
+	struct pl_proc                        *p;
+	int                                    k;
+
+	if (!(p = pl_gated_thread(vcpu)) || r->ip != p->gate_va + PL_RESUME_OFF) return 0;
+#if VMCALL_GATE_INTR_COUNT_ONLY
+	return 0;
+#else
+	if (!p->slot_used) {
+		/* an ordinary cpuid at the resume point: emulated, then the thread falls into the 0xCC */
+		gi.resume_empty++;
+		return 0;
+	}
+	if (r->interrupt_status & 0xff) {
+		/* another interrupt is due: stay hidden, registers zero, RIP on the cpuid */
+		for (k = 0; k < 15; k++) PL_GPR(r)[k] = 0;
+		gi.deferred++;
+		return 1;
+	}
+	for (k = 0; k < 15; k++) PL_GPR(r)[k] = p->slot_r[k];
+	r->ip        = p->slot_ip;
+	r->sp        = p->slot_sp;
+	p->slot_used = 0;
+	gi.restores++;
+	return 1; /* RIP not advanced: the thread continues where it was interrupted */
+#endif
+}
+#endif
+#endif
+
 void
 pt_lock_dump(void)
 {
@@ -480,6 +613,15 @@ pt_lock_dump(void)
 	       "pages locked now %lu; violations hw %lu sw %lu no-linear %lu; count-only unlocks %lu%s\n",
 	       pl.reg_ok, pl.gates, pl.reg_fail, pl.walk_refused, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
 	       pl.viol_nolin, pl.count_only_unlocks, VMCALL_PT_LOCK_COUNT_ONLY ? " (count-only mode)" : "");
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+	printc("VMM: gate-intr%s: slow entries %lu, with RVI %lu; landings with RVI by offset 0/1/7/10/11/other "
+	       "%lu/%lu/%lu/%lu/%lu/%lu, in the gate without RVI %lu/%lu/%lu/%lu/%lu/%lu; hides %lu restores %lu "
+	       "deferred %lu collisions %lu resume-with-empty-slot %lu\n",
+	       VMCALL_GATE_INTR_COUNT_ONLY ? " (count only)" : "", gi.entries, gi.rvi, gi.land[0], gi.land[1],
+	       gi.land[2], gi.land[3], gi.land[4], gi.land[5], gi.land_norvi[0], gi.land_norvi[1], gi.land_norvi[2],
+	       gi.land_norvi[3], gi.land_norvi[4], gi.land_norvi[5], gi.hides, gi.restores, gi.deferred, gi.collisions,
+	       gi.resume_empty);
+#endif
 	if (pl_kernel_user >= 0)
 		printc("VMM: pt_lock walk: %d kernel-half PGD entries had the user bit set at the first walk (information)\n",
 		       pl_kernel_user);

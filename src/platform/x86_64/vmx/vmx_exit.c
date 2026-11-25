@@ -594,6 +594,10 @@ vmx_exit_handler(struct vm_vcpu_shared_region *regs)
 	shared_region->efer = vmread(GUEST_IA32_EFER);
 	shared_region->cr0 = vmread(GUEST_CR0);
 	shared_region->cr3 = vmread(GUEST_CR3);
+#if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
+	/* w11 Phase 4 (A54): the privilege level, for the VMM's gate-interrupt hook. Slow path only. */
+	shared_region->guest_cpl = (vmread(GUEST_SS_ACCESS_RIGHTS) >> 5) & 3;
+#endif
 	shared_region->cr4 = vmread(GUEST_CR4);
 	shared_region->interrupt_status = vmread(GUEST_INTERRUPT_STATUS);
 	shared_region->inst_length = inst_length;
