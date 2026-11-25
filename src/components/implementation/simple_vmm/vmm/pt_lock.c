@@ -614,13 +614,15 @@ pt_lock_dump(void)
 	       pl.reg_ok, pl.gates, pl.reg_fail, pl.walk_refused, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
 	       pl.viol_nolin, pl.count_only_unlocks, VMCALL_PT_LOCK_COUNT_ONLY ? " (count-only mode)" : "");
 #if VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY
-	printc("VMM: gate-intr%s: slow entries %lu, with RVI %lu; landings with RVI by offset 0/1/7/10/11/other "
-	       "%lu/%lu/%lu/%lu/%lu/%lu, in the gate without RVI %lu/%lu/%lu/%lu/%lu/%lu; hides %lu restores %lu "
-	       "deferred %lu collisions %lu resume-with-empty-slot %lu\n",
-	       VMCALL_GATE_INTR_COUNT_ONLY ? " (count only)" : "", gi.entries, gi.rvi, gi.land[0], gi.land[1],
-	       gi.land[2], gi.land[3], gi.land[4], gi.land[5], gi.land_norvi[0], gi.land_norvi[1], gi.land_norvi[2],
-	       gi.land_norvi[3], gi.land_norvi[4], gi.land_norvi[5], gi.hides, gi.restores, gi.deferred, gi.collisions,
-	       gi.resume_empty);
+	/* short lines: printc cuts a long one (the first T11 run lost its restore count that way) */
+	printc("VMM: gate-intr%s: slow entries %lu, with RVI %lu\n", VMCALL_GATE_INTR_COUNT_ONLY ? " (count only)" : "",
+	       gi.entries, gi.rvi);
+	printc("VMM: gate-intr: landings with RVI by offset 0/1/7/10/11/other %lu/%lu/%lu/%lu/%lu/%lu\n", gi.land[0],
+	       gi.land[1], gi.land[2], gi.land[3], gi.land[4], gi.land[5]);
+	printc("VMM: gate-intr: in the gate without RVI %lu/%lu/%lu/%lu/%lu/%lu\n", gi.land_norvi[0], gi.land_norvi[1],
+	       gi.land_norvi[2], gi.land_norvi[3], gi.land_norvi[4], gi.land_norvi[5]);
+	printc("VMM: gate-intr: hides %lu restores %lu deferred %lu collisions %lu resume-empty %lu\n", gi.hides,
+	       gi.restores, gi.deferred, gi.collisions, gi.resume_empty);
 #endif
 	if (pl_kernel_user >= 0)
 		printc("VMM: pt_lock walk: %d kernel-half PGD entries had the user bit set at the first walk (information)\n",
