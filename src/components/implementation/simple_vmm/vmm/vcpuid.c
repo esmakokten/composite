@@ -15,6 +15,7 @@
 #include "vcpuid.h"
 #include "cpu_caps.h"
 #include "apicreg.h"
+#include "pt_lock.h"
 
 static struct cpuinfo_x86 boot_cpu_data;
 static struct vcpuid_entry vcpuid_entries[MAX_VM_VCPUID_ENTRIES];
@@ -773,6 +774,10 @@ cpuid_handler(struct vmrt_vm_vcpu *vcpu)
 	volatile struct vm_vcpu_shared_region *regs = vcpu->shared_region;
 	int test = 0;
 
+#if VMCALL_SELF_REG
+	/* w11 Phase 6 (A71): a process asking to register itself */
+	if (pt_lock_cpuid(vcpu)) return;
+#endif
 	rax = regs->ax;
 	rbx = regs->bx;
 	rcx = regs->cx;

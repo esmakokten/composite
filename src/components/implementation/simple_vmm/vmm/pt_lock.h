@@ -19,6 +19,12 @@ long pt_lock_register_gate(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsign
 void pt_lock_set_comps(compid_t c0, compid_t c1, compid_t c2);
 void pt_lock_unregistered(struct vmrt_vm_vcpu *vcpu, unsigned long root);
 void pt_lock_dump(void);
+#if VMCALL_SELF_REG
+/* Phase 6: 1 when the cpuid was ERRAND_ID_CPUID_LEAF (answered, RIP advanced), 0 otherwise */
+int  pt_lock_cpuid(struct vmrt_vm_vcpu *vcpu);
 #endif
+#endif
+/* simple_vmm.c: the identity counters line, and pong's own count (ERRAND_ID_OP_COUNTERS) */
+void vm_id_counters_print(void);
 
 #endif /* PT_LOCK_H */

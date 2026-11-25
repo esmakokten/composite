@@ -45,6 +45,10 @@ struct pl_proc {
 	/* Phase 4 (A53): one saved slot, the registers of a thread hidden at the resume point */
 	int           slot_used;
 	u64_t         slot_r[15], slot_ip, slot_sp;
+#if VMCALL_SELF_REG
+	/* Phase 6 (A76): the leaf the VMM overwrote with the gate frame, and what it held before */
+	unsigned long *gate_pte, gate_saved;
+#endif
 };
 
 static struct pl_proc pl_procs[PL_PROCS];
@@ -101,6 +105,13 @@ pl_unlock_all(struct pl_proc *p)
 	unsigned long i;
 
 	if (p->gated) {
+#if VMCALL_SELF_REG
+		/* A76: the process's own entry back before any table is writable again */
+		if (p->gate_pte) {
+			*p->gate_pte = p->gate_saved;
+			p->gate_pte  = NULL;
+		}
+#endif
 		memset(GPA2HVA(p->gate_gpa, pl_vmc), 0xcc, PAGE_SIZE_4K);
 		p->gated = 0;
 	}
@@ -413,6 +424,262 @@ pl_find_root(unsigned long root)
 	return NULL;
 }
 
+#if VMCALL_SELF_REG
+/*
+ * Phase 6: the process registers itself (DECISIONS A71 to A79). A ring-3 cpuid with eax =
+ * ERRAND_ID_CPUID_LEAF arrives here from cpuid_handler. No guest-kernel code is on the path: the root
+ * is the exit's CR3 (A72), the list of table pages is the VMM's own walk (A73), the accessed and dirty
+ * bits are pre-set by the module's old rule (A74), and the gate is a frame of the VMM's pool (A75)
+ * written into the process's leaf for an address the process reserved (A76). Order: every check
+ * (no write yet), pre-set, the stub and the gate entry, lock, register. The vCPU is stopped here and
+ * the guest has one vCPU, so nothing races the writes (A74).
+ */
+#define PL_GATE_POOL_GPA 0x3f00000UL /* G4: the hole between Linux's RAM ranges, 1 MiB below the trampoline */
+#define PL_PTE_W         0x2UL
+#define PL_PTE_A         0x20UL
+#define PL_PTE_D         0x40UL
+#define PL_PTE_PROTNONE  0x100UL /* Linux's pte_present(): P or PROTNONE */
+#define PL_USER_TOP      0x0000800000000000UL
+
+static struct {
+	unsigned long reg_ok, ring0, exists, full, addr, walk, held, other, unreg_ok, unreg_noent;
+	unsigned long last_pages, last_root, last_gate, last_frame;
+	const char   *last_why;
+} sr;
+
+/* The leaf for `va`, or NULL with *why: present and user at every level, no large page, not writable. */
+static unsigned long *
+sr_gate_leaf(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long va, const char **why)
+{
+	unsigned long t = root, *ep;
+	int           level;
+
+	*why = "a gate address outside the lower half, unaligned or zero";
+	if (!va || va >= PL_USER_TOP || (va & (PAGE_SIZE_4K - 1))) return NULL;
+	for (level = 4; level >= 1; level--) {
+		*why = "a table outside guest memory";
+		if (!pl_gpa_ok(vcpu, t)) return NULL;
+		ep = &((unsigned long *)GPA2HVA(t, vcpu->vm))[(va >> (12 + 9 * (level - 1))) & 511];
+		*why = "a gate leaf that is absent";
+		if (!(*ep & PL_PTE_P)) return NULL;
+		*why = "a gate leaf that is not user";
+		if (!(*ep & PL_PTE_U)) return NULL;
+		*why = "a gate address behind a large page";
+		if (level > 1 && (*ep & PL_PTE_PS)) return NULL;
+		t = *ep & PL_PTE_FRAME;
+	}
+	*why = "a writable gate leaf";
+	if (*ep & PL_PTE_W) return NULL;
+	return ep;
+}
+
+/* Pass 1, reads only: every lower table reachable from `table` goes into p->gpa (A73). */
+static int
+sr_collect(struct vmrt_vm_vcpu *vcpu, struct pl_proc *p, unsigned long table, int level, int last, const char **why)
+{
+	unsigned long *e = (unsigned long *)GPA2HVA(table, vcpu->vm), next;
+	int            i, ret;
+
+	for (i = 0; i <= last; i++) {
+		if (!(e[i] & PL_PTE_P) || level == 1) continue;
+		*why = "a large page (the module's rule refuses 1 GiB and 2 MiB leaves)";
+		if (e[i] & PL_PTE_PS) return -ERRAND_ID_EINVAL;
+		next = e[i] & PL_PTE_FRAME;
+		*why = "a table outside guest memory";
+		if (!pl_gpa_ok(vcpu, next)) return -ERRAND_ID_EINVAL;
+		*why = "more table pages than ERRAND_ID_LOCK_MAX";
+		if (p->n >= ERRAND_ID_LOCK_MAX) return -ERRAND_ID_ENOMEM;
+		*why = "a table page listed twice";
+		if (pl_listed(p, next)) return -ERRAND_ID_EINVAL;
+		p->gpa[p->n++] = next;
+		if ((ret = sr_collect(vcpu, p, next, level - 1, 511, why))) return ret;
+	}
+	return 0;
+}
+
+/* Pass 2 (A74, errand_id.c's lock_walk): accessed on every present entry, dirty on a present writable PTE. */
+static void
+sr_preset(struct vmrt_vm_vcpu *vcpu, unsigned long table, int level, int last)
+{
+	unsigned long *e = (unsigned long *)GPA2HVA(table, vcpu->vm), v;
+	int            i;
+
+	for (i = 0; i <= last; i++) {
+		v = e[i];
+		if (level == 1) {
+			if (!(v & (PL_PTE_P | PL_PTE_PROTNONE))) continue;
+			v |= PL_PTE_A;
+			if (v & PL_PTE_W) v |= PL_PTE_D;
+			if (v != e[i]) e[i] = v;
+			continue;
+		}
+		if (!(v & PL_PTE_P)) continue;
+		if (!(v & PL_PTE_A)) e[i] = v | PL_PTE_A;
+		sr_preset(vcpu, v & PL_PTE_FRAME, level - 1, 511);
+	}
+}
+
+static long
+sr_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long gate_va, unsigned long comp)
+{
+	struct pl_proc *p = NULL;
+	unsigned long  *leaf, gate_gpa, i, j, k;
+	const char     *why = "the root";
+	long            ret, off;
+
+	if (pl_find_root(root)) {
+		sr.exists++;
+		return -ERRAND_ID_EEXIST;
+	}
+	for (k = 0; k < PL_PROCS; k++) {
+		if (!pl_procs[k].used) { p = &pl_procs[k]; break; }
+	}
+	if (!p) {
+		sr.full++;
+		return -ERRAND_ID_ENOMEM;
+	}
+	pl_vmc   = vcpu->vm;
+	gate_gpa = PL_GATE_POOL_GPA + k * PAGE_SIZE_4K; /* A75: one frame per registration slot */
+	p->n     = 0;
+	if (!pl_gpa_ok(vcpu, root)) goto addr;
+	why = "the component";
+	if (comp > 2 || !pl_comps[comp]) goto addr;
+	if (!(leaf = sr_gate_leaf(vcpu, root, gate_va, &why))) goto addr;
+	p->gpa[p->n++] = root;
+	if ((ret = sr_collect(vcpu, p, root, 4, 255, &why))) {
+		sr.walk++;
+		goto refuse;
+	}
+	why = "a table page another registration holds, or the gate frame itself";
+	for (i = 0; i < p->n; i++) {
+		if (p->gpa[i] == gate_gpa) goto held;
+		for (j = 0; j < PL_PROCS; j++) {
+			if (j == k || !pl_procs[j].used) continue;
+			if (pl_listed(&pl_procs[j], p->gpa[i])) goto held;
+		}
+	}
+
+	/* every check passed: from here on the VMM writes */
+	sr_preset(vcpu, root, 4, 255);
+	why = "the gate's stub";
+	if ((off = pl_gate_write(vcpu, gate_gpa)) < 0 || memmgr_vm_page_perm(pl_vm, gate_gpa, 1, VM_EPT_PERM_RX)) {
+		ret = -ERRAND_ID_EINVAL;
+		sr.other++;
+		goto refuse;
+	}
+	p->root        = root;
+	p->root2       = 0;
+	p->gate_va     = gate_va;
+	p->gate_gpa    = gate_gpa;
+	p->comp        = comp;
+	p->slot_used   = 0;
+	p->gated       = 1;
+	p->gate_saved  = *leaf;
+	p->gate_pte    = leaf;
+	/* A76: the gate frame, present, user, accessed (a locked leaf must not need the CPU's A write), not writable, executable */
+	*leaf = gate_gpa | PL_PTE_P | PL_PTE_U | PL_PTE_A;
+	/* lock every table page (each call ends in a single-context INVEPT: the old translation goes, G5) */
+	for (i = 0; i < p->n; i++) {
+		if ((ret = memmgr_vm_page_perm(pl_vm, p->gpa[i], 1, VM_EPT_PERM_RO))) {
+			why = "the lock";
+			p->n = i;
+			pl_unlock_all(p);
+			sr.other++;
+			goto refuse;
+		}
+		pl.locked_now++;
+	}
+	sr.last_pages  = p->n;
+	p->gpa[p->n++] = gate_gpa; /* the frame joins the set: a write to it revokes (A77) */
+	pl.locked_now++;
+	ret = capmgr_vm_proc_register_gate(pl_vm, pl_comps[comp], root, gate_va + off);
+	if (ret) {
+		why = "the kernel's registration";
+		pl_unlock_all(p);
+		sr.other++;
+		goto refuse;
+	}
+	p->used = 1;
+	pl.reg_ok++;
+	pl.gates++;
+	sr.reg_ok++;
+	pl.last_root = sr.last_root = root;
+	pl.last_gate = sr.last_gate = gate_va;
+	pl.last_gpa = sr.last_frame = gate_gpa;
+	pl.last_comp = comp;
+	pl_hb(vcpu);
+	return 0;
+held:
+	sr.held++;
+	ret = -ERRAND_ID_EINVAL;
+	goto refuse;
+addr:
+	sr.addr++;
+	ret = -ERRAND_ID_EINVAL;
+refuse:
+	/* no print: a serial line is ~8 ms; the dump names the last reason */
+	p->n        = 0;
+	sr.last_why = why;
+	pl.reg_fail++;
+	return ret;
+}
+
+static long
+sr_unregister(struct vmrt_vm_vcpu *vcpu, unsigned long root)
+{
+	struct pl_proc *p = pl_find_root(root);
+	long            ret;
+
+	if (!p) {
+		sr.unreg_noent++;
+		return -ERRAND_ID_ENOENT;
+	}
+	/* unregister before unlock (invariant 4); the saved entry goes back inside pl_unlock_all, before the unlock */
+	ret = capmgr_vm_proc_unregister(pl_vm, root);
+	pl_unlock_all(p);
+	p->used = 0;
+	pl.unreg_unlock++;
+	sr.unreg_ok++;
+	pl_hb(vcpu);
+	return ret;
+}
+
+/* 1 when the cpuid was the leaf (handled, RIP advanced), 0 for every other cpuid */
+int
+pt_lock_cpuid(struct vmrt_vm_vcpu *vcpu)
+{
+	volatile struct vm_vcpu_shared_region *r = vcpu->shared_region;
+	long                                   ret;
+
+	if ((u32_t)r->ax != ERRAND_ID_CPUID_LEAF) return 0;
+	if (r->guest_cpl != 3) {
+		sr.ring0++; /* A71: only a process asks; the guest kernel is refused */
+		ret = -ERRAND_ID_EPERM;
+	} else {
+		switch ((u32_t)r->cx) {
+		case ERRAND_ID_SELF_REGISTER:
+			ret = sr_register(vcpu, r->cr3 & VM_PROC_ROOT_MASK, r->si, r->di);
+			break;
+		case ERRAND_ID_SELF_UNREGISTER:
+			ret = sr_unregister(vcpu, r->cr3 & VM_PROC_ROOT_MASK);
+			break;
+		case ERRAND_ID_SELF_DUMP:
+			pt_lock_dump();
+			vm_id_counters_print();
+			ret = 0;
+			break;
+		default:
+			ret = -ERRAND_ID_EINVAL;
+			break;
+		}
+	}
+	r->ax = (u64_t)(u32_t)ret;
+	r->bx = r->cx = r->dx = 0;
+	GOTO_NEXT_INST(r);
+	return 1;
+}
+#endif /* VMCALL_SELF_REG */
+
 void
 pt_lock_unregistered(struct vmrt_vm_vcpu *vcpu, unsigned long root)
 {
@@ -627,6 +894,13 @@ pt_lock_dump(void)
 	if (pl_kernel_user >= 0)
 		printc("VMM: pt_lock walk: %d kernel-half PGD entries had the user bit set at the first walk (information)\n",
 		       pl_kernel_user);
+#if VMCALL_SELF_REG
+	printc("VMM: self-reg: registered %lu, unregistered %lu (not found %lu); refused: ring 0 %lu, exists %lu, full %lu, "
+	       "address %lu, walk %lu, held %lu, other %lu\n", sr.reg_ok, sr.unreg_ok, sr.unreg_noent, sr.ring0, sr.exists,
+	       sr.full, sr.addr, sr.walk, sr.held, sr.other);
+	printc("VMM: self-reg: last: root %lx, gate %lx on frame %lx, %lu table pages; last refusal: %s\n", sr.last_root,
+	       sr.last_gate, sr.last_frame, sr.last_pages, sr.last_why ? sr.last_why : "none");
+#endif
 	if (pl.gates)
 		printc("VMM: pt_lock: last gate: root %lx at %lx (page %lx), vmcall at %lx, component %lu\n", pl.last_root,
 		       pl.last_gate, pl.last_gpa, pl.last_gate + ERRAND_ID_GATE_VMCALL_OFF, pl.last_comp);
