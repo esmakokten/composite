@@ -201,12 +201,37 @@ static struct {
 } vm_id_ctr;
 
 void
+vm_id_counters_print(void)
+{
+	vm_id_ctr.counters++;
+	printc("VMM: identity counters: register ok %lu fail %lu, unregister ok %lu fail %lu, "
+	       "refused ring-0 %lu, counter dumps %lu\n",
+	       vm_id_ctr.reg_ok, vm_id_ctr.reg_fail, vm_id_ctr.unreg_ok, vm_id_ctr.unreg_fail,
+	       vm_id_ctr.refused, vm_id_ctr.counters);
+	pong_call(); /* the service's own invocation counts (T2) */
+}
+
+void
 vmcall_handler(struct vmrt_vm_vcpu *vcpu)
 {
 	struct vm_vcpu_shared_region *regs = vcpu->shared_region;
 	long ret;
 
 	switch (regs->ax) {
+#if VMCALL_SELF_REG
+	/* Phase 6 (A78): the ring-0 registration operations are gone; a process registers itself */
+	case ERRAND_ID_OP_REGISTER:
+	case ERRAND_ID_OP_UNREGISTER:
+	case ERRAND_ID_OP_REGISTER_LOCKED:
+	case ERRAND_ID_OP_REGISTER_GATE:
+		vm_id_ctr.refused++;
+		ret = -ERRAND_ID_ENOSYS;
+		break;
+	case ERRAND_ID_OP_DUMP:
+		pt_lock_dump();
+		ret = 0;
+		break;
+#else
 	case ERRAND_ID_OP_REGISTER:
 		ret = capmgr_vm_proc_register(g_vm->comp_id, g_vm_proc, regs->bx);
 		if (ret) vm_id_ctr.reg_fail++; else vm_id_ctr.reg_ok++;
@@ -232,13 +257,9 @@ vmcall_handler(struct vmrt_vm_vcpu *vcpu)
 		if (ret) vm_id_ctr.reg_fail++; else vm_id_ctr.reg_ok++;
 		break;
 #endif
+#endif /* VMCALL_SELF_REG */
 	case ERRAND_ID_OP_COUNTERS:
-		vm_id_ctr.counters++;
-		printc("VMM: identity counters: register ok %lu fail %lu, unregister ok %lu fail %lu, "
-		       "refused ring-0 %lu, counter dumps %lu\n",
-		       vm_id_ctr.reg_ok, vm_id_ctr.reg_fail, vm_id_ctr.unreg_ok, vm_id_ctr.unreg_fail,
-		       vm_id_ctr.refused, vm_id_ctr.counters);
-		pong_call(); /* the service's own invocation counts (T2) */
+		vm_id_counters_print();
 		ret = 0;
 		break;
 	default:
