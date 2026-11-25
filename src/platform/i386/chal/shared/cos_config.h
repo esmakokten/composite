@@ -189,6 +189,19 @@
 #if VMCALL_GATE && !(VMCALL_IDENTITY && VMCALL_RESUME_RIP3)
 #error "VMCALL_GATE needs VMCALL_IDENTITY and VMCALL_RESUME_RIP3"
 #endif
+/*
+ * w11 Phase 4. VMCALL_GATE_INTR: the hypervisor owns the window in which a thread is interrupted
+ * inside its gate (DECISIONS A51 to A53). At a slow-path entry that would deliver a guest interrupt
+ * to a gated thread whose RIP is in its gate page, the VMM saves the thread's registers, blanks
+ * them and moves RIP to the gate's resume point (a cpuid), and restores them when the thread
+ * reaches it. VMCALL_GATE_INTR_COUNT_ONLY: classify and count those entries, change nothing (T10).
+ * Both 0 = the old behaviour.
+ */
+#define VMCALL_GATE_INTR 0
+#define VMCALL_GATE_INTR_COUNT_ONLY 0
+#if (VMCALL_GATE_INTR || VMCALL_GATE_INTR_COUNT_ONLY) && !VMCALL_GATE
+#error "VMCALL_GATE_INTR needs VMCALL_GATE"
+#endif
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4
