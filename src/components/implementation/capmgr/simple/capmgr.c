@@ -1233,6 +1233,17 @@ capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root)
 }
 
 int
+capmgr_vm_proc_register_gate(compid_t vm_comp_id, compid_t proc_comp_id, word_t root, word_t gate_rip)
+{
+	compcap_t vmc, pc;
+	int       ret;
+
+	if ((ret = vm_proc_comps(vm_comp_id, proc_comp_id, &vmc, &pc))) return ret;
+
+	return cos_vm_proc_register_gate(cos_compinfo_get(cos_defcompinfo_curr_get()), vmc, pc, root, gate_rip);
+}
+
+int
 capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root)
 {
 	compcap_t vmc;

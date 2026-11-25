@@ -1179,6 +1179,13 @@ cos_vm_proc_register(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_
 }
 
 int
+cos_vm_proc_register_gate(struct cos_compinfo *ci, compcap_t vm_comp, compcap_t proc_comp, unsigned long root,
+                          unsigned long gate_rip)
+{
+	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_REGISTER, vm_comp, proc_comp, root, gate_rip);
+}
+
+int
 cos_vm_proc_unregister(struct cos_compinfo *ci, compcap_t vm_comp, unsigned long root)
 {
 	return call_cap_op(ci->captbl_cap, CAPTBL_OP_VM_PROC_UNREGISTER, vm_comp, root, 0, 0);

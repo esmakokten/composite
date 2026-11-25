@@ -36,6 +36,14 @@ struct vm_proc_ent {
 
 struct vm_proc_tbl {
 	struct vm_proc_ent ent[VM_PROC_MAX];
+#if VMCALL_GATE
+	/*
+	 * w11 Phase 3 (A33): the one vmcall instruction an entry may be served from, its gate's. A
+	 * parallel array, read only after the root matched, so the scan touches the same four lines.
+	 * Written before the root at registration; 0 = no gate, never served.
+	 */
+	unsigned long gate[VM_PROC_MAX];
+#endif
 } __attribute__((aligned(CACHELINE_SIZE)));
 
 extern struct vm_proc_tbl vm_proc_tbls[VM_PROC_MAX_VMS];
@@ -66,6 +74,25 @@ vm_proc_lkup(struct vm_proc_tbl *t, unsigned long root)
 	return NULL;
 }
 
+#if VMCALL_GATE
+/* The fast-path lookup under the gate: the root's component, only when `rip` is its gate's vmcall. */
+static inline struct comp_info *
+vm_proc_lkup_gate(struct vm_proc_tbl *t, unsigned long root, unsigned long rip)
+{
+	int i;
+
+	if (unlikely(!root)) return NULL;
+	for (i = 0; i < VM_PROC_MAX; i++) {
+		if (VM_PROC_ACCESS(t->ent[i].root) == root) {
+			VM_PROC_BARRIER();
+			if (unlikely(VM_PROC_ACCESS(t->gate[i]) != rip || !rip)) return NULL;
+			return VM_PROC_ACCESS(t->ent[i].ci);
+		}
+	}
+	return NULL;
+}
+#endif
+
 static inline int
 __vm_proc_comps(struct captbl *ct, capid_t vm_comp_cap, struct vm_proc_tbl **t, struct cap_comp **vmc)
 {
@@ -80,7 +107,11 @@ __vm_proc_comps(struct captbl *ct, capid_t vm_comp_cap, struct vm_proc_tbl **t, 
 }
 
 static inline int
+#if VMCALL_GATE
+vm_proc_register(struct captbl *ct, capid_t vm_comp_cap, capid_t proc_comp_cap, unsigned long root, unsigned long gate)
+#else
 vm_proc_register(struct captbl *ct, capid_t vm_comp_cap, capid_t proc_comp_cap, unsigned long root)
+#endif
 {
 	struct vm_proc_tbl *t;
 	struct cap_comp    *vmc, *pc;
@@ -100,6 +131,9 @@ vm_proc_register(struct captbl *ct, capid_t vm_comp_cap, capid_t proc_comp_cap, 
 		if (VM_PROC_ACCESS(t->ent[i].root) != 0) continue;
 		if (cos_cas(&t->ent[i].root, 0, VM_PROC_ROOT_CLAIMED) != CAS_SUCCESS) continue;
 		t->ent[i].ci = &pc->info;
+#if VMCALL_GATE
+		t->gate[i] = gate; /* before the root (G3's order) */
+#endif
 		VM_PROC_BARRIER();
 		VM_PROC_ACCESS(t->ent[i].root) = root;
 

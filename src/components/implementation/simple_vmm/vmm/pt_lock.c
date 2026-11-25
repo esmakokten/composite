@@ -19,6 +19,7 @@
  * Counters are printed by ERRAND_ID_OP_DUMP and mirrored for the kernel's heartbeat; nothing here
  * runs on the fast path.
  */
+#include <string.h>
 #include <cos_types.h>
 #include <llprint.h>
 #include <memmgr.h>
@@ -38,14 +39,19 @@ struct pl_proc {
 	int           used;
 	unsigned long root, root2, n;
 	unsigned long gpa[ERRAND_ID_LOCK_MAX];
+	/* Phase 3: the gate (A32), its page also the last entry of gpa[] */
+	int           gated;
+	unsigned long gate_va, gate_gpa, comp;
 };
 
 static struct pl_proc pl_procs[PL_PROCS];
 static compid_t       pl_vm, pl_proc_comp;
+static compid_t       pl_comps[3]; /* Phase 3 (A36): process components by registration index */
+static struct vmrt_vm_comp *pl_vmc; /* the VM, for GPA2HVA outside a vCPU's context */
 static int            pl_unit_pending;
 
 static struct {
-	unsigned long reg_ok, reg_fail, unreg_unlock, revoked, locked_now;
+	unsigned long reg_ok, reg_fail, unreg_unlock, revoked, locked_now, walk_refused;
 	unsigned long viol_hw, viol_sw, viol_nolin, count_only_unlocks;
 	unsigned long n_rip;
 	struct { unsigned long rip, gpa, qual; } rip[PL_RIPS];
@@ -83,11 +89,16 @@ pl_gpa_ok(struct vmrt_vm_vcpu *vcpu, unsigned long gpa)
 	       && gpa - PAGE_SIZE_4K < vcpu->vm->guest_mem_sz;
 }
 
-/* Make `p`'s still-locked pages writable again. */
+/* Make `p`'s still-locked pages writable again; a gate page is filled with 0xCC first (A32). */
 static void
 pl_unlock_all(struct pl_proc *p)
 {
 	unsigned long i;
+
+	if (p->gated) {
+		memset(GPA2HVA(p->gate_gpa, pl_vmc), 0xcc, PAGE_SIZE_4K);
+		p->gated = 0;
+	}
 
 	for (i = 0; i < p->n; i++) {
 		if (p->gpa[i] & PL_UNLOCKED) continue;
@@ -96,10 +107,120 @@ pl_unlock_all(struct pl_proc *p)
 	}
 }
 
-long
-pt_lock_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long root2, unsigned long list_gpa)
+/*
+ * A31: the VMM checks the tables itself. Called after every listed page is read-only, so the tables
+ * cannot change under the walk. The user half of `root` (PGD entries 0 to 255), level by level:
+ * every present entry that points to a lower table (not a large-page leaf) must point to a listed
+ * page inside guest memory. Returns 0, or -1 with *miss and *why filled. The kernel half is not
+ * walked: its lower tables are shared by every process and cannot be locked.
+ */
+#define PL_PTE_P     0x1UL
+#define PL_PTE_U     0x4UL
+#define PL_PTE_PS    0x80UL
+#define PL_PTE_FRAME 0x000ffffffffff000UL
+
+static int
+pl_listed(struct pl_proc *p, unsigned long gpa)
+{
+	unsigned long i;
+
+	for (i = 0; i < p->n; i++) if ((p->gpa[i] & ~PL_UNLOCKED) == gpa) return 1;
+	return 0;
+}
+
+static int
+pl_walk_table(struct vmrt_vm_vcpu *vcpu, struct pl_proc *p, unsigned long table, int level, int first, int last,
+              unsigned long *miss, const char **why)
+{
+	unsigned long *e = (unsigned long *)GPA2HVA(table, vcpu->vm);
+	int            i;
+
+	for (i = first; i <= last; i++) {
+		unsigned long v = e[i], next;
+
+		if (!(v & PL_PTE_P)) continue;
+		if (level == 1) continue;                    /* a PTE maps a data page */
+		if (level < 4 && (v & PL_PTE_PS)) continue;  /* a 1 GiB or 2 MiB leaf */
+		next = v & PL_PTE_FRAME;
+		if (!pl_gpa_ok(vcpu, next)) {
+			*miss = next;
+			*why  = "a table outside guest memory";
+			return -1;
+		}
+		if (!pl_listed(p, next)) {
+			*miss = next;
+			*why  = level == 4 ? "an unlisted PUD page" : level == 3 ? "an unlisted PMD page" : "an unlisted PTE page";
+			return -1;
+		}
+		if (pl_walk_table(vcpu, p, next, level - 1, 0, 511, miss, why)) return -1;
+	}
+	return 0;
+}
+
+static int
+pl_walk(struct vmrt_vm_vcpu *vcpu, struct pl_proc *p, unsigned long root, unsigned long *miss, const char **why)
+{
+	static int     reported;
+	unsigned long *pgd = (unsigned long *)GPA2HVA(root, vcpu->vm);
+	int            i, ku = 0;
+
+	if (!reported) {
+		reported = 1;
+		for (i = 256; i < 512; i++) if ((pgd[i] & (PL_PTE_P | PL_PTE_U)) == (PL_PTE_P | PL_PTE_U)) ku++;
+		printc("VMM: pt_lock walk: %d kernel-half PGD entries have the user bit set (information)\n", ku);
+	}
+	return pl_walk_table(vcpu, p, root, 4, 0, 255, miss, why);
+}
+
+/*
+ * Phase 3 (A32): translate `va` through the process's tables (already locked and walked). Returns
+ * the leaf PTE, or 0 when a level is absent, not user, a large page, or outside guest memory.
+ */
+static unsigned long
+pl_translate(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long va)
+{
+	unsigned long t = root, e = 0;
+	int           level;
+
+	for (level = 4; level >= 1; level--) {
+		if (!pl_gpa_ok(vcpu, t)) return 0;
+		e = ((unsigned long *)GPA2HVA(t, vcpu->vm))[(va >> (12 + 9 * (level - 1))) & 511];
+		if ((e & (PL_PTE_P | PL_PTE_U)) != (PL_PTE_P | PL_PTE_U)) return 0;
+		if (level > 1 && (e & PL_PTE_PS)) return 0;
+		t = e & PL_PTE_FRAME;
+	}
+	return e;
+}
+
+/*
+ * Phase 3: write the stub into the gate page (A34) and check the one-vmcall rule (A33). Returns the
+ * page offset of the vmcall, or -1.
+ */
+static long
+pl_gate_write(struct vmrt_vm_vcpu *vcpu, unsigned long gate_gpa)
+{
+	static const unsigned char stub[] = ERRAND_ID_GATE_STUB;
+	unsigned char             *g      = (unsigned char *)GPA2HVA(gate_gpa, vcpu->vm);
+	long                       i, found = -1, n = 0;
+
+	memset(g, 0xcc, PAGE_SIZE_4K);
+	memcpy(g, stub, sizeof(stub));
+	for (i = 0; i + 2 < PAGE_SIZE_4K; i++) {
+		if (g[i] == 0x0f && g[i + 1] == 0x01 && g[i + 2] == 0xc1) {
+			found = i;
+			n++;
+		}
+	}
+	if (n != 1 || found != ERRAND_ID_GATE_VMCALL_OFF) return -1;
+	return found;
+}
+
+static long
+pl_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long root2, unsigned long list_gpa, int gated)
 {
 	struct errand_id_lock_page *lp;
+	struct errand_id_gate_page *gp = NULL;
+	unsigned long               gate_va = 0, gate_gpa = 0, comp = 0, nmax = ERRAND_ID_LOCK_MAX;
 	struct pl_proc             *p = NULL;
 	unsigned long               i = 0, j, n = 0;
 	int                         r1 = 0, r2 = !root2;
@@ -112,12 +233,22 @@ pt_lock_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long ro
 	}
 	if (!p) { ret = -ERRAND_ID_ENOMEM; goto fail; }
 
+	pl_vmc = vcpu->vm;
 	/* Copy the list out of guest memory before checking it: the guest could change it after. */
 	lp = (struct errand_id_lock_page *)GPA2HVA(list_gpa, vcpu->vm);
 	n  = lp->count;
+	if (gated) {
+		gp       = (struct errand_id_gate_page *)lp;
+		comp     = gp->comp;
+		gate_va  = gp->gate_va;
+		gate_gpa = gp->gate_gpa;
+		nmax     = ERRAND_ID_GATE_MAX;
+		why      = "the gate (component, address or page)";
+		if (comp > 2 || !pl_comps[comp] || (gate_va & (PAGE_SIZE_4K - 1)) || !gate_va || !pl_gpa_ok(vcpu, gate_gpa)) goto inval;
+	}
 	why = "count";
-	if (n == 0 || n > ERRAND_ID_LOCK_MAX) goto inval;
-	for (i = 0; i < n; i++) p->gpa[i] = lp->gpa[i];
+	if (n == 0 || n > nmax) goto inval;
+	for (i = 0; i < n; i++) p->gpa[i] = gated ? gp->gpa[i] : lp->gpa[i];
 	for (i = 0; i < n; i++) {
 		why = "a page outside guest memory";
 		if (!pl_gpa_ok(vcpu, p->gpa[i])) goto inval;
@@ -152,11 +283,60 @@ pt_lock_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long ro
 		}
 		pl.locked_now++;
 	}
-	/* ... register second. */
-	ret = capmgr_vm_proc_register(pl_vm, pl_proc_comp, root);
-	if (!ret && root2) {
-		ret = capmgr_vm_proc_register(pl_vm, pl_proc_comp, root2);
-		if (ret) capmgr_vm_proc_unregister(pl_vm, root);
+	/* A31: walk the now read-only tables; every lower table must be one of the listed pages. */
+	{
+		unsigned long miss = 0;
+		const char   *wwhy = "";
+
+		if (pl_walk(vcpu, p, root, &miss, &wwhy) || (root2 && pl_walk(vcpu, p, root2, &miss, &wwhy))) {
+			printc("VMM: pt_lock: locked registration of root %lx refused by the walk: %s, gpa %lx\n", root, wwhy,
+			       miss);
+			pl_unlock_all(p);
+			pl.walk_refused++;
+			ret = -ERRAND_ID_EINVAL;
+			goto fail;
+		}
+	}
+	if (gated) {
+		/*
+		 * A32, after the lock and the walk: the gate address must map to the gate page, user,
+		 * present and not writable, through every root (both under PTI); the page must not be one
+		 * of the tables. Then the stub, read+fetch in the EPT, and the page joins the locked set.
+		 */
+		unsigned long e1 = pl_translate(vcpu, root, gate_va), e2 = root2 ? pl_translate(vcpu, root2, gate_va) : e1;
+		long          off;
+
+		why = "the gate's mapping (not present, writable, or another page)";
+		if (pl_listed(p, gate_gpa) || !e1 || !e2 || (e1 & 0x2) || (e2 & 0x2) || (e1 & PL_PTE_FRAME) != gate_gpa
+		    || (e2 & PL_PTE_FRAME) != gate_gpa) {
+			pl_unlock_all(p);
+			goto inval;
+		}
+		why = "the gate's stub";
+		if ((off = pl_gate_write(vcpu, gate_gpa)) < 0 || memmgr_vm_page_perm(pl_vm, gate_gpa, 1, VM_EPT_PERM_RX)) {
+			pl_unlock_all(p);
+			goto inval;
+		}
+		p->gpa[p->n++] = gate_gpa;
+		pl.locked_now++;
+		p->gated    = 1;
+		p->gate_va  = gate_va;
+		p->gate_gpa = gate_gpa;
+		p->comp     = comp;
+		ret = capmgr_vm_proc_register_gate(pl_vm, pl_comps[comp], root, gate_va + off);
+		if (!ret && root2) {
+			ret = capmgr_vm_proc_register_gate(pl_vm, pl_comps[comp], root2, gate_va + off);
+			if (ret) capmgr_vm_proc_unregister(pl_vm, root);
+		}
+		if (!ret) printc("VMM: pt_lock: gate for root %lx at %lx (page %lx), vmcall at %lx, component %lu\n", root,
+		                 gate_va, gate_gpa, gate_va + off, comp);
+	} else {
+		/* ... register second. */
+		ret = capmgr_vm_proc_register(pl_vm, pl_proc_comp, root);
+		if (!ret && root2) {
+			ret = capmgr_vm_proc_register(pl_vm, pl_proc_comp, root2);
+			if (ret) capmgr_vm_proc_unregister(pl_vm, root);
+		}
 	}
 	if (ret) {
 		pl_unlock_all(p);
@@ -174,6 +354,30 @@ inval:
 fail:
 	pl.reg_fail++;
 	return ret;
+}
+
+long
+pt_lock_register(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long root2, unsigned long list_gpa)
+{
+	return pl_register(vcpu, root, root2, list_gpa, 0);
+}
+
+long
+pt_lock_register_gate(struct vmrt_vm_vcpu *vcpu, unsigned long root, unsigned long root2, unsigned long list_gpa)
+{
+#if VMCALL_GATE
+	return pl_register(vcpu, root, root2, list_gpa, 1);
+#else
+	return -ERRAND_ID_ENOSYS;
+#endif
+}
+
+void
+pt_lock_set_comps(compid_t c0, compid_t c1, compid_t c2)
+{
+	pl_comps[0] = c0;
+	pl_comps[1] = c1;
+	pl_comps[2] = c2;
 }
 
 static struct pl_proc *
@@ -260,9 +464,9 @@ pt_lock_dump(void)
 {
 	unsigned long i;
 
-	printc("VMM: pt_lock: locked registrations ok %lu fail %lu, unregister+unlock %lu, revoked %lu, "
+	printc("VMM: pt_lock: locked registrations ok %lu fail %lu (walk refused %lu), unregister+unlock %lu, revoked %lu, "
 	       "pages locked now %lu; violations hw %lu sw %lu no-linear %lu; count-only unlocks %lu%s\n",
-	       pl.reg_ok, pl.reg_fail, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
+	       pl.reg_ok, pl.reg_fail, pl.walk_refused, pl.unreg_unlock, pl.revoked, pl.locked_now, pl.viol_hw, pl.viol_sw,
 	       pl.viol_nolin, pl.count_only_unlocks, VMCALL_PT_LOCK_COUNT_ONLY ? " (count-only mode)" : "");
 	for (i = 0; i < pl.n_rip && i < PL_RIPS; i++) {
 		printc("VMM: pt_lock: violation %lu: rip %lx gpa %lx qualification %lx (%s)\n", i, pl.rip[i].rip,

@@ -106,6 +106,8 @@ compid_t capmgr_vm_proc_create(compid_t vm_comp_id, word_t slot_mask);
 compid_t COS_STUB_DECL(capmgr_vm_proc_create)(compid_t vm_comp_id, word_t slot_mask);
 int capmgr_vm_proc_register(compid_t vm_comp_id, compid_t proc_comp_id, word_t root);
 int COS_STUB_DECL(capmgr_vm_proc_register)(compid_t vm_comp_id, compid_t proc_comp_id, word_t root);
+/* w11 Phase 3: register with the gate's vmcall address (VMCALL_GATE) */
+int capmgr_vm_proc_register_gate(compid_t vm_comp_id, compid_t proc_comp_id, word_t root, word_t gate_rip);
 int capmgr_vm_proc_unregister(compid_t vm_comp_id, word_t root);
 int COS_STUB_DECL(capmgr_vm_proc_unregister)(compid_t vm_comp_id, word_t root);
 

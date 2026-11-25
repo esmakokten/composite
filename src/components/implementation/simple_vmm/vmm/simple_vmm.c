@@ -227,6 +227,10 @@ vmcall_handler(struct vmrt_vm_vcpu *vcpu)
 		pt_lock_dump();
 		ret = 0;
 		break;
+	case ERRAND_ID_OP_REGISTER_GATE:
+		ret = pt_lock_register_gate(vcpu, regs->bx, regs->cx, regs->dx);
+		if (ret) vm_id_ctr.reg_fail++; else vm_id_ctr.reg_ok++;
+		break;
 #endif
 	case ERRAND_ID_OP_COUNTERS:
 		vm_id_ctr.counters++;
@@ -306,6 +310,16 @@ cos_init(void)
 	}
 #if VMCALL_PT_LOCK
 	pt_lock_init(g_vm->comp_id, g_vm_proc); /* before any vCPU runs */
+#if VMCALL_GATE
+	{
+		/* Phase 3 (A36): two more process components, slot 0 only and slot 1 only (T8) */
+		compid_t c1 = capmgr_vm_proc_create(g_vm->comp_id, 0x1), c2 = capmgr_vm_proc_create(g_vm->comp_id, 0x2);
+
+		printc("VMM: process components for gates: 0 = %lu (slots 0x3), 1 = %lu (0x1), 2 = %lu (0x2)\n",
+		       (unsigned long)g_vm_proc, (unsigned long)c1, (unsigned long)c2);
+		pt_lock_set_comps(g_vm_proc, c1, c2);
+	}
+#endif
 #endif
 
 	if (nic_netio_shmem_map) {

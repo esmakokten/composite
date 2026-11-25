@@ -329,6 +329,9 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 */
 	/* Look up the sinv cap and target comp_info */
 	unsigned long ip, sp;
+#if VMCALL_GATE
+	unsigned long gate_rip_now = 0; /* w11 Phase 3: GUEST_RIP, read once */
+#endif
 	curr_ci = thd_invstk_current(thd_curr, &ip, &sp, cos_info);
 #if VMCALL_IDENTITY
 	/*
@@ -348,7 +351,13 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 		root = vmread(GUEST_CR3) & VM_PROC_ROOT_MASK;
 		/* (c) The VM's process table, found by the VM component's ASID. */
 		pt  = likely(curr_ci) ? vm_proc_tbl_get(curr_ci->pgtblinfo.protdom) : NULL;
+#if VMCALL_GATE
+		/* (d) A33: only the gate's one vmcall. The RIP read is the one RIP + 3 used to do below. */
+		gate_rip_now = vmread(GUEST_RIP);
+		pci = likely(pt) ? vm_proc_lkup_gate(pt, root, gate_rip_now) : NULL;
+#else
 		pci = likely(pt) ? vm_proc_lkup(pt, root) : NULL;
+#endif
 		if (unlikely(!pci)) {
 			vmcall_id_misses++;
 #if VMM_HEARTBEAT
@@ -394,7 +403,10 @@ vmx_vmcall_fast_handler(struct pt_regs *regs)
 	 * uses syscall, which depends on host STAR/LSTAR/FMASK.
 	 */
 
-#if VMCALL_RESUME_RIP3
+#if VMCALL_GATE
+	/* Invariant 6, with the RIP the gate check already read */
+	vmwrite(GUEST_RIP, gate_rip_now + 3);
+#elif VMCALL_RESUME_RIP3
 	/* Invariant 6: the kernel computes the resume address; vmcall is 3 bytes (0f 01 c1). */
 	vmwrite(GUEST_RIP, vmread(GUEST_RIP) + 3);
 #else
@@ -445,7 +457,9 @@ refuse:
 	 * path: the assembly pops these registers and vmresumes (vmx_exit_asm.S:59-78).
 	 */
 	regs->ax = (word_t)-EPERM;
-#if VMCALL_RESUME_RIP3
+#if VMCALL_GATE
+	vmwrite(GUEST_RIP, gate_rip_now + 3);
+#elif VMCALL_RESUME_RIP3
 	vmwrite(GUEST_RIP, vmread(GUEST_RIP) + 3);
 #else
 	vmwrite(GUEST_RIP, regs->r8);

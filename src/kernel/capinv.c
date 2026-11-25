@@ -1577,7 +1577,11 @@ static sword_t __attribute__((noinline)) composite_syscall_slowpath(struct pt_re
 			capid_t       proc_comp_cap = __userregs_get2(regs);
 			unsigned long root          = __userregs_get3(regs);
 
+#if VMCALL_GATE
+			ret = vm_proc_register(ct, vm_comp_cap, proc_comp_cap, root, __userregs_get4(regs));
+#else
 			ret = vm_proc_register(ct, vm_comp_cap, proc_comp_cap, root);
+#endif
 			break;
 		}
 		case CAPTBL_OP_VM_PROC_UNREGISTER: {
