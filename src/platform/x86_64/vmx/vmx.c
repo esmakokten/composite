@@ -388,7 +388,10 @@ vmx_thd_init(struct thread *thd, void *vm_pgd, struct cap_vm_vmcb *vmcb)
 	eptp = chal_va2pa(vmcs->ept_pml4_base);
 	eptp |= 6;
 	eptp |= (4 - 1) << 3;
+#if !VMCALL_PT_LOCK
+	/* EPT accessed/dirty flags. Off under the lock: with them on, a guest page walk is a write (A10). */
 	eptp |= 1 << 6;
+#endif
 	vmwrite(EPTP, eptp);
 
 	vmwrite(POSTED_INTERRUPT_NOTIFICATION_VECTOR, HW_LAPIC_POSTED_INTR);

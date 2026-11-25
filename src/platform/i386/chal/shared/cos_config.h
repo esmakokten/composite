@@ -164,6 +164,13 @@
  * never the fast path (vm_hb_tick, vmx_exit.c). A diagnostic for the soak; 0 = the old behaviour.
  */
 #define VMM_HEARTBEAT 0
+/*
+ * w11 Phase 2. VMCALL_PT_LOCK: a registered process's page-table pages are read-only in the EPT
+ * and the first write to one revokes the registration. Under it the EPT pointer is built without
+ * the accessed/dirty enable (bit 6), which would make every guest page walk through a read-only
+ * table a write (DECISIONS A10). 0 = the old behaviour.
+ */
+#define VMCALL_PT_LOCK 0
 
 /* root page tbale is 0, then second level page table is 1, etc.*/
 #define COS_PGTBL_DEPTH 4
