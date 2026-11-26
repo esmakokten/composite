@@ -487,8 +487,9 @@ sr_collect(struct vmrt_vm_vcpu *vcpu, struct pl_proc *p, unsigned long table, in
 		next = e[i] & PL_PTE_FRAME;
 		*why = "a table outside guest memory";
 		if (!pl_gpa_ok(vcpu, next)) return -ERRAND_ID_EINVAL;
-		*why = "more table pages than ERRAND_ID_LOCK_MAX";
-		if (p->n >= ERRAND_ID_LOCK_MAX) return -ERRAND_ID_ENOMEM;
+		/* one entry of p->gpa stays free for the gate frame, appended after the lock */
+		*why = "more table pages than ERRAND_ID_LOCK_MAX - 1";
+		if (p->n >= ERRAND_ID_LOCK_MAX - 1) return -ERRAND_ID_ENOMEM;
 		*why = "a table page listed twice";
 		if (pl_listed(p, next)) return -ERRAND_ID_EINVAL;
 		p->gpa[p->n++] = next;
